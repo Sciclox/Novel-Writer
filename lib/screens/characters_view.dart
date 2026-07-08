@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import '../database/app_database.dart';
+import '../shared/app_theme.dart';
 import '../shared/app_widgets.dart';
-
-
+import '../widgets/relations_graph_view.dart';
 // --- PANTALLA DE DETALLE DEL PERSONAJE (CODEX) ---
 class CharacterDetailScreen extends StatefulWidget {
   final Map<String, dynamic> personaje;
@@ -122,15 +122,15 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
   Widget _buildLeftSidebar() {
     return Container(
       width: 80,
-      decoration: const BoxDecoration(
-        color: const Color(0xFF2C2C2E),
-        border: Border(right: BorderSide(color: Colors.white10)),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(right: BorderSide(color: AppColors.separator)),
       ),
       child: Column(
         children: [
           const SizedBox(height: 48),
           IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white38),
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textSecondary),
             tooltip: 'Volver a personajes',
             onPressed: () => Navigator.pop(context),
           ),
@@ -144,7 +144,9 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Center(
-                    child: GestureDetector(
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
                       onTap: () {
                         setState(() {
                           _p = Map<String, dynamic>.from(pj);
@@ -157,25 +159,26 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: isSelected ? Colors.white : Colors.transparent,
+                            color: isSelected ? AppColors.accent : Colors.transparent,
                             width: 2,
                           ),
                           image: pj['imagen_path'] != null
                               ? DecorationImage(image: FileImage(File(pj['imagen_path'])), fit: BoxFit.cover)
                               : null,
-                          color: Colors.white10,
+                          color: AppColors.bg,
                         ),
                         child: pj['imagen_path'] == null
-                            ? const Icon(Icons.person, color: Colors.white24, size: 20)
+                            ? Icon(Icons.person, color: AppColors.textTertiary, size: 20)
                             : null,
+                      ),
                       ),
                     ),
                   ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
       ),
     );
   }
@@ -208,7 +211,9 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Retrato Grande
-        GestureDetector(
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
           onTap: _pickImage,
           child: Hero(
             tag: 'pj_img_${_p['id']}',
@@ -218,18 +223,19 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 30, offset: const Offset(0, 15))
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 30, offset: const Offset(0, 15))
                 ],
                 image: _p['imagen_path'] != null
                     ? DecorationImage(image: FileImage(File(_p['imagen_path'])), fit: BoxFit.cover)
                     : null,
-                color: Colors.white.withValues(alpha: 0.05),
+                color: AppColors.bg,
               ),
               child: _p['imagen_path'] == null
-                  ? const Icon(Icons.add_a_photo_rounded, color: Colors.white24, size: 48)
+                  ? Icon(Icons.add_a_photo_rounded, color: AppColors.textTertiary, size: 48)
                   : null,
             ),
           ),
+        ),
         ),
         const SizedBox(width: 48),
         // Información de Texto
@@ -240,18 +246,18 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
               const SizedBox(height: 12),
               _buildEditableText(
                 controller: _nombreController,
-                style: GoogleFonts.inter(fontSize: 48, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -1),
+                style: GoogleFonts.outfit(fontSize: 48, fontWeight: FontWeight.bold, color: AppColors.textPrimary, letterSpacing: -1),
                 hint: 'Nombre del Personaje',
               ),
               _buildEditableText(
                 controller: _fraseController,
-                style: GoogleFonts.merriweather(fontSize: 18, fontStyle: FontStyle.italic, color: Colors.white.withValues(alpha: 0.8)),
+                style: GoogleFonts.merriweather(fontSize: 18, fontStyle: FontStyle.italic, color: AppColors.textSecondary),
                 hint: '“Una frase icónica que defina su alma...”',
                 prefix: '“',
                 suffix: '”',
               ),
               const SizedBox(height: 24),
-              const Divider(color: Colors.white10),
+              Divider(color: AppColors.separator.withValues(alpha: 0.5)),
               const SizedBox(height: 24),
               Row(
                 children: [
@@ -278,15 +284,15 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 14, color: Colors.white24),
+              Icon(icon, size: 14, color: AppColors.textTertiary),
               const SizedBox(width: 6),
-              Text(label, style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white24, letterSpacing: 1)),
+              Text(label, style: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textTertiary, letterSpacing: 1)),
             ],
           ),
           const SizedBox(height: 8),
           TextField(
             controller: controller,
-            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
+            style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
             decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
             onChanged: (_) => _guardar(),
           ),
@@ -300,7 +306,7 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       height: 30,
       width: 1,
       margin: const EdgeInsets.symmetric(horizontal: 24),
-      color: Colors.white10,
+      color: AppColors.separator,
     );
   }
 
@@ -309,26 +315,29 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
     return Row(
       children: tabs.asMap().entries.map((e) {
         final isSelected = _activeTab == e.key;
-        return GestureDetector(
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
           onTap: () => setState(() => _activeTab = e.key),
           child: Container(
             margin: const EdgeInsets.only(right: 32),
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: isSelected ? Colors.white : Colors.transparent, width: 2)),
+              border: Border(bottom: BorderSide(color: isSelected ? AppColors.accent : Colors.transparent, width: 2)),
             ),
             child: Text(
               e.value,
-              style: GoogleFonts.inter(
-                color: isSelected ? Colors.white : Colors.white24,
+              style: GoogleFonts.outfit(
+                color: isSelected ? AppColors.textPrimary : AppColors.textTertiary,
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.5,
               ),
             ),
+            ),
           ),
         );
-      }).toList(),
+        }).toList(),
     );
   }
 
@@ -337,7 +346,7 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       case 0: return _buildProfileTab();
       case 1: return _buildAppearanceTab();
       case 2: return _buildRelationshipsTab();
-      default: return const Center(child: Text('Sección en construcción...', style: TextStyle(color: Colors.white24)));
+      default: return Center(child: Text('Sección en construcción...', style: TextStyle(color: AppColors.textTertiary)));
     }
   }
 
@@ -349,22 +358,17 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             _buildSectionTitle('RED DE VÍNCULOS'),
-            ElevatedButton.icon(
+            OutlinedButton.icon(
               onPressed: _mostrarDialogoNuevaRelacion,
               icon: const Icon(Icons.hub_rounded, size: 18),
               label: const Text('NUEVO VÍNCULO'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black87,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
             ),
           ],
         ),
         const SizedBox(height: 32),
         Expanded(
           child: _relaciones.isEmpty
-              ? Center(child: Text('Aún no hay relaciones definidas para este personaje.', style: GoogleFonts.inter(color: Colors.white12)))
+              ? Center(child: Text('Aún no hay relaciones definidas para este personaje.', style: GoogleFonts.outfit(color: AppColors.textTertiary)))
               : ListView.builder(
                   itemCount: _relaciones.length,
                   itemBuilder: (context, index) {
@@ -382,9 +386,9 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppColors.separator),
       ),
       child: Row(
         children: [
@@ -396,17 +400,17 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
               image: rel['imagen_otro'] != null
                   ? DecorationImage(image: FileImage(File(rel['imagen_otro'])), fit: BoxFit.cover)
                   : null,
-              color: Colors.white10,
+              color: AppColors.bg,
             ),
-            child: rel['imagen_otro'] == null ? const Icon(Icons.person, color: Colors.white24) : null,
+            child: rel['imagen_otro'] == null ? Icon(Icons.person, color: AppColors.textTertiary) : null,
           ),
           const SizedBox(width: 24),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(rel['nombre_otro'], style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                Text(rel['tipo'].toUpperCase(), style: GoogleFonts.inter(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                Text(rel['nombre_otro'], style: GoogleFonts.outfit(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(rel['tipo'].toUpperCase(), style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
               ],
             ),
           ),
@@ -419,8 +423,8 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('INTENSIDAD EMOCIONAL', style: GoogleFonts.inter(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.bold)),
-                    Text('${rel['intensidad']}%', style: GoogleFonts.inter(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                    Text('INTENSIDAD EMOCIONAL', style: GoogleFonts.outfit(color: AppColors.textTertiary, fontSize: 10, fontWeight: FontWeight.bold)),
+                    Text('${rel['intensidad']}%', style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -428,7 +432,7 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: rel['intensidad'] / 100,
-                    backgroundColor: Colors.white10,
+                    backgroundColor: AppColors.separator.withValues(alpha: 0.3),
                     color: _getColorForIntensidad(rel['intensidad']),
                     minHeight: 6,
                   ),
@@ -438,7 +442,7 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
           ),
           const SizedBox(width: 32),
           IconButton(
-            icon: const Icon(Icons.delete_outline_rounded, color: Colors.white24),
+            icon: Icon(Icons.delete_outline_rounded, color: AppColors.textTertiary),
             tooltip: 'Eliminar vínculo',
             onPressed: () async {
               final confirm = await showConfirmDialog(
@@ -459,7 +463,7 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
 
   Color _getColorForIntensidad(int value) {
     if (value > 80) return Colors.redAccent;
-    if (value > 50) return Colors.white;
+    if (value > 50) return AppColors.accent;
     return Colors.blueAccent;
   }
 
@@ -482,41 +486,44 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF2C2C2E),
-          title: Text('Vincular con...', style: GoogleFonts.inter(color: Colors.white)),
+          backgroundColor: AppColors.surface,
+          title: Text('Vincular con...', style: GoogleFonts.outfit(color: AppColors.textPrimary)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              DropdownButtonFormField<int>(
-                dropdownColor: const Color(0xFF2C2C2E),
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Personaje', labelStyle: TextStyle(color: Colors.white54)),
-                items: otros.map((pj) => DropdownMenuItem(
+              AppDropdown<int>(
+                value: seleccionadoId,
+                hint: 'Seleccionar...',
+                items: otros.map((pj) => AppDropdownItem<int>(
                   value: pj['id'] as int,
-                  child: Text(pj['nombre']),
+                  label: pj['nombre'],
                 )).toList(),
                 onChanged: (v) => seleccionadoId = v,
               ),
               const SizedBox(height: 16),
               TextField(
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Tipo de Relación (ej: Rivalidad)', labelStyle: TextStyle(color: Colors.white54)),
+                style: TextStyle(color: AppColors.textPrimary),
+                decoration: InputDecoration(labelText: 'Tipo de Relación (ej: Rivalidad)', labelStyle: TextStyle(color: AppColors.textSecondary)),
                 onChanged: (v) => tipo = v,
               ),
               const SizedBox(height: 24),
-              Text('Intensidad Emocional: ${intensidad.toInt()}%', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              Text('Intensidad Emocional: ${intensidad.toInt()}%', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
               Slider(
                 value: intensidad,
                 min: 0,
                 max: 100,
-                activeColor: Colors.white,
+                activeColor: AppColors.accent,
                 onChanged: (v) => setDialogState(() => intensidad = v),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCELAR')),
-            TextButton(
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: OutlinedButton.styleFrom(foregroundColor: AppColors.textTertiary, side: BorderSide(color: AppColors.textTertiary.withValues(alpha: 0.3))),
+              child: const Text('CANCELAR'),
+            ),
+            OutlinedButton(
               onPressed: () async {
                 if (seleccionadoId != null) {
                   await AppDatabase.insertRelacion({
@@ -547,8 +554,8 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
           TextField(
             controller: _descripcionController,
             maxLines: null,
-            style: GoogleFonts.merriweather(color: Colors.white70, fontSize: 16, height: 1.8),
-            decoration: const InputDecoration(border: InputBorder.none, hintText: 'Comienza a escribir la historia de este personaje...', hintStyle: TextStyle(color: Colors.white10)),
+            style: GoogleFonts.merriweather(color: AppColors.textSecondary, fontSize: 16, height: 1.8),
+            decoration: InputDecoration(border: InputBorder.none, hintText: 'Comienza a escribir la historia de este personaje...', hintStyle: TextStyle(color: AppColors.textTertiary)),
             onChanged: (_) => _guardar(),
           ),
           const SizedBox(height: 48),
@@ -575,27 +582,27 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       width: 280,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppColors.separator),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: Colors.white),
+              Icon(icon, size: 16, color: AppColors.textPrimary),
               const SizedBox(width: 10),
-              Text(title, style: GoogleFonts.inter(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
+              Text(title, style: GoogleFonts.outfit(color: AppColors.textPrimary, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
             ],
           ),
           const SizedBox(height: 16),
           TextField(
             maxLines: 2,
-            style: GoogleFonts.inter(color: Colors.white70, fontSize: 14),
+            style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: const TextStyle(color: Colors.white10, fontSize: 13),
+              hintStyle: TextStyle(color: AppColors.textTertiary, fontSize: 13),
               border: InputBorder.none,
               isDense: true,
             ),
@@ -640,17 +647,17 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppColors.separator),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(label, style: GoogleFonts.inter(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.bold)),
+          Text(label, style: GoogleFonts.outfit(color: AppColors.textTertiary, fontSize: 10, fontWeight: FontWeight.bold)),
           TextField(
             controller: TextEditingController(text: value)..selection = TextSelection.collapsed(offset: value.length),
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
             decoration: const InputDecoration(border: InputBorder.none, isDense: true),
             onChanged: (v) {
               _atributos[key] = v;
@@ -665,9 +672,9 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
   Widget _buildRightSidebar() {
     return Container(
       width: 320,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0D0E19),
-        border: Border(left: BorderSide(color: Colors.white10)),
+      decoration: BoxDecoration(
+        color: AppColors.bg,
+        border: Border(left: BorderSide(color: AppColors.separator)),
       ),
       child: Column(
         children: [
@@ -691,9 +698,9 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.hub_outlined, size: 48, color: Colors.white12),
+            Icon(Icons.hub_outlined, size: 48, color: AppColors.textTertiary),
             const SizedBox(height: 16),
-            Text('Sin conexiones aún', style: GoogleFonts.inter(color: Colors.white12, fontSize: 12)),
+            Text('Sin conexiones aún', style: GoogleFonts.outfit(color: AppColors.textTertiary, fontSize: 12)),
           ],
         ),
       );
@@ -716,7 +723,7 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                   image: rel['imagen_otro'] != null
                       ? DecorationImage(image: FileImage(File(rel['imagen_otro'])), fit: BoxFit.cover)
                       : null,
-                  color: Colors.white10,
+                  color: AppColors.bg,
                 ),
               ),
               const SizedBox(width: 12),
@@ -724,8 +731,8 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(rel['nombre_otro'], style: GoogleFonts.inter(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                    Text(rel['tipo'], style: GoogleFonts.inter(color: Colors.white.withValues(alpha: 0.6), fontSize: 10)),
+                    Text(rel['nombre_otro'], style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.bold)),
+                    Text(rel['tipo'], style: GoogleFonts.outfit(color: AppColors.textTertiary, fontSize: 10)),
                   ],
                 ),
               ),
@@ -760,13 +767,13 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       padding: const EdgeInsets.only(bottom: 24),
       child: Row(
         children: [
-          Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+          Container(width: 8, height: 8, decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle)),
           const SizedBox(width: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: GoogleFonts.inter(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-              Text(time, style: GoogleFonts.inter(color: Colors.white24, fontSize: 11)),
+              Text(title, style: GoogleFonts.outfit(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+              Text(time, style: GoogleFonts.outfit(color: AppColors.textTertiary, fontSize: 11)),
             ],
           ),
         ],
@@ -779,16 +786,16 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       padding: const EdgeInsets.all(24),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: Colors.white38),
+          Icon(icon, size: 16, color: AppColors.textSecondary),
           const SizedBox(width: 12),
-          Text(title, style: GoogleFonts.inter(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+          Text(title, style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
         ],
       ),
     );
   }
 
   Widget _buildSectionTitle(String title) {
-    return Text(title, style: GoogleFonts.inter(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 2));
+    return Text(title, style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 2));
   }
 
   Widget _buildEditableText({required TextEditingController controller, required TextStyle style, required String hint, String prefix = '', String suffix = ''}) {
@@ -797,7 +804,7 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
       style: style,
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: style.copyWith(color: Colors.white10),
+        hintStyle: style.copyWith(color: AppColors.textTertiary),
         border: InputBorder.none,
         isDense: true,
         prefixText: prefix,
@@ -898,11 +905,11 @@ class _CharactersViewState extends State<CharactersView> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF2C2C2E),
+          backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           title: Text(
             'Crear Vínculo',
-            style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold),
+            style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -910,18 +917,18 @@ class _CharactersViewState extends State<CharactersView> {
             children: [
               Text(
                 'Relación entre ${pjA['nombre']} y ${pjB['nombre']}',
-                style: GoogleFonts.inter(color: Colors.white70, fontSize: 14),
+                style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14),
               ),
               const SizedBox(height: 20),
               TextField(
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: AppColors.textPrimary),
                 decoration: InputDecoration(
                   labelText: 'Tipo de Relación',
-                  labelStyle: const TextStyle(color: Colors.white54),
+                  labelStyle: TextStyle(color: AppColors.textSecondary),
                   hintText: 'ej: Enemigos, Romance, Mentor',
-                  hintStyle: const TextStyle(color: Colors.white24),
+                  hintStyle: TextStyle(color: AppColors.textTertiary),
                   filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.02),
+                  fillColor: AppColors.bg,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -932,24 +939,25 @@ class _CharactersViewState extends State<CharactersView> {
               const SizedBox(height: 24),
               Text(
                 'Intensidad Emocional: ${intensidad.toInt()}%',
-                style: GoogleFonts.inter(color: Colors.white70, fontSize: 13),
+                style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13),
               ),
               Slider(
                 value: intensidad,
                 min: 0,
                 max: 100,
-                activeColor: Colors.white,
-                inactiveColor: Colors.white10,
+                activeColor: AppColors.accent,
+                inactiveColor: AppColors.separator,
                 onChanged: (v) => setDialogState(() => intensidad = v),
               ),
             ],
           ),
           actions: [
-            TextButton(
+            OutlinedButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('CANCELAR', style: GoogleFonts.inter(color: Colors.white54)),
+              style: OutlinedButton.styleFrom(foregroundColor: AppColors.textTertiary, side: BorderSide(color: AppColors.textTertiary.withValues(alpha: 0.3))),
+              child: Text('CANCELAR', style: GoogleFonts.outfit(color: AppColors.textSecondary)),
             ),
-            ElevatedButton(
+            OutlinedButton(
               onPressed: () async {
                 await AppDatabase.insertRelacion({
                   'personaje_a_id': idA,
@@ -960,12 +968,7 @@ class _CharactersViewState extends State<CharactersView> {
                 _cargarPersonajes();
                 Navigator.pop(ctx);
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black87,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: Text('CREAR VÍNCULO', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+              child: Text('CREAR VÍNCULO', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -978,186 +981,30 @@ class _CharactersViewState extends State<CharactersView> {
       return Center(
         child: Text(
           'Necesitas personajes para ver su red de vínculos.',
-          style: GoogleFonts.inter(color: Colors.white24, fontSize: 16),
+          style: GoogleFonts.outfit(color: AppColors.textTertiary, fontSize: 16),
         ),
       );
     }
 
-    final double canvasSize = 1000.0;
-    final center = Offset(canvasSize / 2, canvasSize / 2);
-    final radius = _personajes.length == 1 ? 0.0 : 350.0;
-
-    // Calcular posiciones radiales
-    Map<int, Offset> positions = {};
-    for (int i = 0; i < _personajes.length; i++) {
-      final pj = _personajes[i];
-      if (_personajes.length == 1) {
-        positions[pj['id']] = center;
-      } else {
-        final angle = (2 * 3.14159265 * i) / _personajes.length;
-        positions[pj['id']] = Offset(
-          center.dx + radius * cos(angle),
-          center.dy + radius * sin(angle),
-        );
-      }
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF12131F),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF2E2F48), width: 1.5),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InteractiveViewer(
-        boundaryMargin: const EdgeInsets.all(400),
-        minScale: 0.4,
-        maxScale: 2.0,
-        constrained: false,
-        child: GestureDetector(
-          onTap: () {
-            setState(() {
-              _selectedPersonajeId = null;
-              _firstSelectedId = null;
-            });
-          },
-          child: SizedBox(
-            width: canvasSize,
-            height: canvasSize,
-            child: Stack(
-              children: [
-                // 1. Conexiones (Líneas)
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: CharacterRelationsPainter(
-                      positions: positions,
-                      relaciones: _relacionesProyecto,
-                      selectedId: _selectedPersonajeId,
-                    ),
-                  ),
-                ),
-
-                // 2. Nodos de personajes
-                ..._personajes.where((pj) => positions.containsKey(pj['id'])).map((pj) {
-                  final id = pj['id'] as int;
-                  final pos = positions[id]!;
-                  final isSelected = _selectedPersonajeId == id;
-                  final isFirstSelected = _firstSelectedId == id;
-                  final double nodeRadius = 45.0;
-                  final double outerRadius = 52.0;
-
-                  return Positioned(
-                    left: pos.dx - outerRadius,
-                    top: pos.dy - outerRadius,
-                    child: GestureDetector(
-                      onTap: () => _onNodeTap(id),
-                      onDoubleTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CharacterDetailScreen(
-                              personaje: pj,
-                              todosLosPersonajes: _personajes,
-                              onUpdate: _cargarPersonajes,
-                            ),
-                          ),
-                        );
-                      },
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: outerRadius * 2,
-                              height: outerRadius * 2,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: isFirstSelected
-                                      ? Colors.greenAccent.withValues(alpha: 0.3)
-                                      : (isSelected ? Colors.white.withValues(alpha: 0.3) : Colors.transparent),
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 150),
-                                width: nodeRadius * 2,
-                                height: nodeRadius * 2,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: (isSelected || isFirstSelected)
-                                      ? [
-                                          BoxShadow(
-                                            color: Colors.white.withValues(alpha: 0.4),
-                                            blurRadius: 16,
-                                            spreadRadius: 2,
-                                          )
-                                        ]
-                                      : [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(alpha: 0.4),
-                                            blurRadius: 10,
-                                            offset: const Offset(0, 5),
-                                          )
-                                        ],
-                                  border: Border.all(
-                                    color: isFirstSelected
-                                        ? Colors.greenAccent
-                                        : (isSelected ? Colors.white : Colors.white24),
-                                    width: (isSelected || isFirstSelected) ? 2.5 : 1.5,
-                                  ),
-                                  image: pj['imagen_path'] != null && File(pj['imagen_path']).existsSync()
-                                      ? DecorationImage(
-                                          image: FileImage(File(pj['imagen_path'])),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : null,
-                                  color: const Color(0xFF3A3A3C),
-                                ),
-                                child: pj['imagen_path'] == null
-                                    ? Center(
-                                        child: Text(
-                                          pj['nombre']?.toString().substring(0, 1).toUpperCase() ?? '?',
-                                          style: GoogleFonts.inter(
-                                            color: Colors.white70,
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF3A3A3C),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFF48484A)),
-                              ),
-                              child: Text(
-                                pj['nombre'] ?? 'Sin nombre',
-                                style: GoogleFonts.inter(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ],
+    return RelationsGraphView(
+      personajes: _personajes,
+      relaciones: _relacionesProyecto,
+      selectedPersonajeId: _selectedPersonajeId,
+      firstSelectedId: _firstSelectedId,
+      onNodeTap: _onNodeTap,
+      onNodeDoubleTap: (id) {
+        final pj = _personajes.firstWhere((p) => p['id'] == id);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CharacterDetailScreen(
+              personaje: pj,
+              todosLosPersonajes: _personajes,
+              onUpdate: _cargarPersonajes,
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -1168,11 +1015,14 @@ class _CharactersViewState extends State<CharactersView> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1C1C1E),
+      backgroundColor: AppColors.bg,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _mostrarDialogoCreacion(),
-        icon: const Icon(Icons.person_add_rounded),
-        label: Text('NUEVO PERSONAJE', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+        icon: const Icon(Icons.person_add_rounded, size: 18),
+        label: Text('NUEVO PERSONAJE', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.accent,
+        foregroundColor: AppColors.bg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       body: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -1186,10 +1036,10 @@ class _CharactersViewState extends State<CharactersView> {
                   children: [
                     Text(
                       'Personajes',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.outfit(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1197,7 +1047,7 @@ class _CharactersViewState extends State<CharactersView> {
                       _showNetworkMap
                           ? 'Visualiza la red social y emocional de tus personajes. Selecciona dos para conectarlos.'
                           : 'Gestiona el elenco de tu historia. Haz clic en una cartilla para entrar al Codex.',
-                      style: GoogleFonts.inter(color: Colors.white38, fontSize: 16),
+                      style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 16),
                     ),
                   ],
                 ),
@@ -1206,14 +1056,16 @@ class _CharactersViewState extends State<CharactersView> {
                 // Toggle de Galería vs Red de Vínculos
                 Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3A3A3C),
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF48484A)),
+                    border: Border.all(color: Colors.white10),
                   ),
                   padding: const EdgeInsets.all(4),
                   child: Row(
                     children: [
-                      GestureDetector(
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
                         onTap: () => setState(() {
                           _showNetworkMap = false;
                           _firstSelectedId = null;
@@ -1223,57 +1075,73 @@ class _CharactersViewState extends State<CharactersView> {
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: !_showNetworkMap ? Colors.white : Colors.transparent,
+                            color: !_showNetworkMap
+                                ? AppColors.accent.withValues(alpha: 0.08)
+                                : Colors.transparent,
                             borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: !_showNetworkMap ? AppColors.accent : Colors.transparent,
+                              width: 1.5,
+                            ),
                           ),
                           child: Row(
                             children: [
                               Icon(
                                 Icons.grid_view_rounded,
                                 size: 16,
-                                color: !_showNetworkMap ? Colors.black87 : Colors.white54,
+                                color: !_showNetworkMap ? AppColors.accent : Colors.white54,
                               ),
                               const SizedBox(width: 8),
                               Text(
                                 'Galería',
-                                style: GoogleFonts.inter(
-                                  fontWeight: FontWeight.bold,
+                                style: GoogleFonts.outfit(
+                                  fontWeight: !_showNetworkMap ? FontWeight.bold : FontWeight.normal,
                                   fontSize: 13,
-                                  color: !_showNetworkMap ? Colors.black87 : Colors.white54,
+                                  color: !_showNetworkMap ? AppColors.accent : Colors.white54,
                                 ),
                               )
                             ],
                           ),
                         ),
                       ),
-                      GestureDetector(
+                      ),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
                         onTap: () => setState(() => _showNetworkMap = true),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: _showNetworkMap ? Colors.white : Colors.transparent,
+                            color: _showNetworkMap
+                                ? AppColors.accent.withValues(alpha: 0.08)
+                                : Colors.transparent,
                             borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _showNetworkMap ? AppColors.accent : Colors.transparent,
+                              width: 1.5,
+                            ),
                           ),
                           child: Row(
                             children: [
                               Icon(
                                 Icons.hub_rounded,
                                 size: 16,
-                                color: _showNetworkMap ? Colors.black87 : Colors.white54,
+                                color: _showNetworkMap ? AppColors.accent : Colors.white54,
                               ),
                               const SizedBox(width: 8),
                               Text(
                                 'Red de Vínculos',
-                                style: GoogleFonts.inter(
-                                  fontWeight: FontWeight.bold,
+                                style: GoogleFonts.outfit(
+                                  fontWeight: _showNetworkMap ? FontWeight.bold : FontWeight.normal,
                                   fontSize: 13,
-                                  color: _showNetworkMap ? Colors.black87 : Colors.white54,
+                                  color: _showNetworkMap ? AppColors.accent : Colors.white54,
                                 ),
                               )
                             ],
                           ),
                         ),
+                      ),
                       ),
                     ],
                   ),
@@ -1317,18 +1185,12 @@ class _CharactersViewState extends State<CharactersView> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.people_outline_rounded, size: 80, color: Colors.white10),
-          const SizedBox(height: 24),
-          Text(
-            'Aún no tienes personajes registrados.',
-            style: GoogleFonts.inter(color: Colors.white30, fontSize: 18),
-          ),
-        ],
-      ),
+    return buildEmptyState(
+      icon: Icons.people_outline_rounded,
+      title: 'Aún no tienes personajes registrados.',
+      subtitle: 'Crea tu primer personaje para poblar tu mundo narrativo.',
+      actionLabel: 'CREAR PRIMER PERSONAJE',
+      onAction: () => _mostrarDialogoCreacion(),
     );
   }
 
@@ -1363,7 +1225,6 @@ class _CharacterCardState extends State<_CharacterCard> {
 
   @override
   Widget build(BuildContext context) {
-    const gold = Colors.white;
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -1373,15 +1234,15 @@ class _CharacterCardState extends State<_CharacterCard> {
         transformAlignment: Alignment.center,
         transform: _isHovered ? (Matrix4.translationValues(0.0, -8.0, 0.0) * Matrix4.diagonal3Values(1.02, 1.02, 1.0)) : Matrix4.identity(),
         decoration: BoxDecoration(
-          color: const Color(0xFF3A3A3C),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: _isHovered ? gold.withValues(alpha: 0.4) : const Color(0xFF48484A),
+            color: _isHovered ? AppColors.accent.withValues(alpha: 0.4) : AppColors.separator,
             width: 1.2,
           ),
           boxShadow: [
             BoxShadow(
-              color: _isHovered ? gold.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.25),
+              color: _isHovered ? AppColors.accent.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08),
               blurRadius: _isHovered ? 25 : 15,
               offset: Offset(0, _isHovered ? 12 : 8),
             ),
@@ -1402,36 +1263,41 @@ class _CharacterCardState extends State<_CharacterCard> {
                       scale: _isHovered ? 1.08 : 1.0,
                       duration: const Duration(milliseconds: 350),
                       curve: Curves.easeOutCubic,
-                      child: widget.personaje['imagen_path'] != null && File(widget.personaje['imagen_path']).existsSync()
-                          ? Hero(
-                              tag: 'pj_img_${widget.personaje['id']}',
-                              child: Image.file(
-                                File(widget.personaje['imagen_path']),
-                                fit: BoxFit.cover,
-                              ),
-                            )
-                          : Container(
-                              color: const Color(0xFF3A3A3C),
-                              child: Icon(
-                                Icons.person_rounded,
-                                size: 64,
-                                color: Colors.white.withValues(alpha: 0.05),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          widget.personaje['imagen_path'] != null && File(widget.personaje['imagen_path']).existsSync()
+                              ? Hero(
+                                  tag: 'pj_img_${widget.personaje['id']}',
+                                  child: Image.file(
+                                    File(widget.personaje['imagen_path']),
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
+                              : Container(
+                                  color: AppColors.surface,
+                                  child: Icon(
+                                    Icons.person_rounded,
+                                    size: 64,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ),
+                          Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.5),
+                                  ],
+                                ),
                               ),
                             ),
-                    ),
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.7),
-                            ],
                           ),
-                        ),
+                        ],
                       ),
                     ),
                     Positioned(
@@ -1439,11 +1305,11 @@ class _CharacterCardState extends State<_CharacterCard> {
                       right: 8,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.4),
+                          color: Colors.black.withValues(alpha: 0.06),
                           shape: BoxShape.circle,
                         ),
                         child: IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.white60, size: 20),
+                          icon: Icon(Icons.delete_outline_rounded, color: AppColors.textSecondary, size: 20),
                           tooltip: 'Eliminar personaje',
                           onPressed: widget.onDelete,
                         ),
@@ -1462,10 +1328,10 @@ class _CharacterCardState extends State<_CharacterCard> {
                     children: [
                       Text(
                         widget.personaje['nombre'] ?? 'Sin nombre',
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.outfit(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1473,8 +1339,8 @@ class _CharacterCardState extends State<_CharacterCard> {
                       const SizedBox(height: 4),
                       Text(
                         (widget.personaje['rol'] ?? 'Sin rol definido').toUpperCase(),
-                        style: GoogleFonts.inter(
-                          color: gold,
+                        style: GoogleFonts.outfit(
+                          color: AppColors.accent,
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.0,
@@ -1534,9 +1400,9 @@ class _SimpleCreationDialogState extends State<_SimpleCreationDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF2C2C2E),
+      backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      title: Text('Nuevo Personaje', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)),
+      title: Text('Nuevo Personaje', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1546,12 +1412,12 @@ class _SimpleCreationDialogState extends State<_SimpleCreationDialog> {
               width: 100,
               height: 100,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
+                color: AppColors.bg,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white10),
+                border: Border.all(color: AppColors.separator),
               ),
               clipBehavior: Clip.antiAlias,
-              child: _imagenPath != null ? Image.file(File(_imagenPath!), fit: BoxFit.cover) : const Icon(Icons.add_a_photo_rounded, color: Colors.white24),
+              child: _imagenPath != null ? Image.file(File(_imagenPath!), fit: BoxFit.cover) : Icon(Icons.add_a_photo_rounded, color: AppColors.textTertiary),
             ),
           ),
           const SizedBox(height: 24),
@@ -1560,19 +1426,19 @@ class _SimpleCreationDialogState extends State<_SimpleCreationDialog> {
             children: [
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.03),
+                  color: AppColors.bg,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: _nameError != null ? Colors.redAccent : Colors.white10,
+                    color: _nameError != null ? AppColors.red : AppColors.separator,
                   ),
                 ),
                 child: TextField(
                   controller: _nombreController,
                   autofocus: true,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: AppColors.textPrimary),
                   decoration: InputDecoration(
                     labelText: 'Nombre del personaje *',
-                    labelStyle: TextStyle(color: _nameError != null ? Colors.redAccent : Colors.white54),
+                    labelStyle: TextStyle(color: _nameError != null ? AppColors.red : AppColors.textSecondary),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
@@ -1583,7 +1449,7 @@ class _SimpleCreationDialogState extends State<_SimpleCreationDialog> {
                   padding: const EdgeInsets.only(left: 16, top: 6),
                   child: Text(
                     _nameError!,
-                    style: GoogleFonts.inter(color: Colors.redAccent, fontSize: 11),
+                    style: GoogleFonts.outfit(color: AppColors.red, fontSize: 11),
                   ),
                 ),
             ],
@@ -1591,8 +1457,12 @@ class _SimpleCreationDialogState extends State<_SimpleCreationDialog> {
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCELAR')),
-        ElevatedButton(
+        OutlinedButton(
+          onPressed: () => Navigator.pop(context),
+          style: OutlinedButton.styleFrom(foregroundColor: AppColors.textTertiary, side: BorderSide(color: AppColors.textTertiary.withValues(alpha: 0.3))),
+          child: const Text('CANCELAR'),
+        ),
+        OutlinedButton(
           onPressed: () async {
             _validate();
             if (_nombreController.text.trim().isNotEmpty) {
@@ -1610,7 +1480,6 @@ class _SimpleCreationDialogState extends State<_SimpleCreationDialog> {
               Navigator.pop(context);
             }
           },
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black87),
           child: const Text('CREAR'),
         ),
       ],
@@ -1654,7 +1523,7 @@ class CharacterRelationsPainter extends CustomPainter {
         } else if (tipo.contains('ami') || tipo.contains('alia') || tipo.contains('famil') || tipo.contains('herman')) {
           lineColor = Colors.greenAccent.withValues(alpha: opacity);
         } else {
-          lineColor = Colors.white.withValues(alpha: opacity);
+          lineColor = AppColors.accent.withValues(alpha: opacity);
         }
 
         // Determinar grosor por intensidad (1 a 100)
@@ -1703,8 +1572,8 @@ class CharacterRelationsPainter extends CustomPainter {
     final textPainter = TextPainter(
       text: TextSpan(
         text: text,
-        style: GoogleFonts.inter(
-          color: Colors.white,
+        style: GoogleFonts.outfit(
+          color: AppColors.textPrimary,
           fontSize: 10,
           fontWeight: FontWeight.bold,
         ),
@@ -1713,7 +1582,7 @@ class CharacterRelationsPainter extends CustomPainter {
     )..layout();
 
     final bgPaint = Paint()
-      ..color = const Color(0xFF0F101A)
+      ..color = AppColors.bg
       ..style = PaintingStyle.fill;
 
     final rect = Rect.fromCenter(

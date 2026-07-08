@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../database/app_database.dart';
+import '../shared/app_theme.dart';
+import '../shared/app_widgets.dart';
 
 import '../widgets/draggable_card.dart';
 
@@ -75,17 +77,33 @@ class _IdeasViewState extends State<IdeasView> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Eliminar Tarjeta', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-        content: Text('¿Estás seguro de eliminar esta tarjeta de ideas? Sus conexiones se borrarán también.', style: GoogleFonts.inter(color: Colors.white70)),
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors.separator),
+        ),
+        title: Text('Eliminar Tarjeta', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+        content: Text('¿Estás seguro de eliminar esta tarjeta de ideas? Sus conexiones se borrarán también.', style: GoogleFonts.outfit(color: AppColors.textSecondary)),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('CANCELAR', style: GoogleFonts.inter(color: Colors.white38)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textTertiary,
+              side: BorderSide(color: AppColors.textTertiary.withValues(alpha: 0.3)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            ),
+            child: Text('CANCELAR', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
           ),
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-            child: Text('ELIMINAR', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.red,
+              side: BorderSide(color: AppColors.red),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            ),
+            child: Text('ELIMINAR', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -113,52 +131,81 @@ class _IdeasViewState extends State<IdeasView> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setStateDialog) => AlertDialog(
-          title: Text('Nueva Tarjeta de Idea', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: AppColors.separator),
+          ),
+          title: Text('Nueva Tarjeta de Idea', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              DropdownButtonFormField<String>(
-                dropdownColor: const Color(0xFF2C2C2E),
-                initialValue: tipo,
-                decoration: const InputDecoration(labelText: 'Categoría'),
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 15),
+              AppDropdown<String>(
+                value: tipo,
                 items: const [
-                  DropdownMenuItem(value: 'idea', child: Text('Idea General')),
-                  DropdownMenuItem(value: 'personaje', child: Text('Personaje')),
-                  DropdownMenuItem(value: 'escena', child: Text('Escena')),
-                  DropdownMenuItem(value: 'lugar', child: Text('Lugar')),
+                  AppDropdownItem(value: 'idea', label: 'Idea General'),
+                  AppDropdownItem(value: 'personaje', label: 'Personaje'),
+                  AppDropdownItem(value: 'escena', label: 'Escena'),
+                  AppDropdownItem(value: 'lugar', label: 'Lugar'),
                 ],
-                onChanged: (v) => tipo = v ?? 'idea',
+                onChanged: (v) {
+                  if (v != null) setStateDialog(() => tipo = v);
+                },
               ),
               const SizedBox(height: 16),
               TextField(
                 autofocus: true,
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 15),
-                decoration: const InputDecoration(labelText: 'Título'),
+                style: GoogleFonts.outfit(color: AppColors.textPrimary, fontSize: 15),
+                decoration: InputDecoration(
+                  labelText: 'Título',
+                  labelStyle: GoogleFonts.outfit(color: AppColors.textSecondary),
+                  filled: true,
+                  fillColor: AppColors.bg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
                 onChanged: (v) => titulo = v,
               ),
               const SizedBox(height: 16),
               TextField(
                 maxLines: 3,
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 15),
-                decoration: const InputDecoration(labelText: 'Descripción / Notas'),
+                style: GoogleFonts.outfit(color: AppColors.textPrimary, fontSize: 15),
+                decoration: InputDecoration(
+                  labelText: 'Descripción / Notas',
+                  labelStyle: GoogleFonts.outfit(color: AppColors.textSecondary),
+                  filled: true,
+                  fillColor: AppColors.bg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
                 onChanged: (v) => contenido = v,
               ),
             ],
           ),
           actions: [
-            TextButton(
+            OutlinedButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('CANCELAR', style: GoogleFonts.inter(color: Colors.white38)),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00F0FF),
-                foregroundColor: const Color(0xFF1C1C1E),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.textTertiary,
+                side: BorderSide(color: AppColors.textTertiary.withValues(alpha: 0.3)),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               ),
-              child: Text('CREAR', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+              child: Text('CANCELAR', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+            ),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                side: BorderSide(color: AppColors.accent),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              ),
+              child: Text('CREAR', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -196,32 +243,35 @@ class _IdeasViewState extends State<IdeasView> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('Conectar Tarjetas', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: AppColors.separator),
+          ),
+          title: Text('Conectar Tarjetas', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              DropdownButtonFormField<int>(
-                dropdownColor: const Color(0xFF2C2C2E),
-                decoration: const InputDecoration(labelText: 'Tarjeta de Origen'),
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 15),
+              AppDropdown<int>(
+                value: origenId,
+                hint: 'Seleccionar...',
                 items: _tarjetas
-                    .map((t) => DropdownMenuItem(
+                    .map((t) => AppDropdownItem<int>(
                           value: t['id'] as int,
-                          child: Text(t['titulo']?.toString().isEmpty ?? true ? 'Sin título' : t['titulo']),
+                          label: t['titulo']?.toString().isEmpty ?? true ? 'Sin título' : t['titulo'],
                         ))
                     .toList(),
                 onChanged: (v) => setDialogState(() => origenId = v),
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<int>(
-                dropdownColor: const Color(0xFF2C2C2E),
-                decoration: const InputDecoration(labelText: 'Tarjeta de Destino'),
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 15),
+              AppDropdown<int>(
+                value: destinoId,
+                hint: 'Seleccionar...',
                 items: _tarjetas
                     .where((t) => t['id'] != origenId)
-                    .map((t) => DropdownMenuItem(
+                    .map((t) => AppDropdownItem<int>(
                           value: t['id'] as int,
-                          child: Text(t['titulo']?.toString().isEmpty ?? true ? 'Sin título' : t['titulo']),
+                          label: t['titulo']?.toString().isEmpty ?? true ? 'Sin título' : t['titulo'],
                         ))
                     .toList(),
                 onChanged: (v) => setDialogState(() => destinoId = v),
@@ -229,11 +279,17 @@ class _IdeasViewState extends State<IdeasView> {
             ],
           ),
           actions: [
-            TextButton(
+            OutlinedButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('CANCELAR', style: GoogleFonts.inter(color: Colors.white38)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.textTertiary,
+                side: BorderSide(color: AppColors.textTertiary.withValues(alpha: 0.3)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              ),
+              child: Text('CANCELAR', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
             ),
-            ElevatedButton(
+            OutlinedButton(
               onPressed: () async {
                 if (origenId != null && destinoId != null) {
                   final result = await AppDatabase.insertConexion(origenId!, destinoId!);
@@ -247,12 +303,13 @@ class _IdeasViewState extends State<IdeasView> {
                   }
                 }
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00F0FF),
-                foregroundColor: const Color(0xFF1C1C1E),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                side: BorderSide(color: AppColors.accent),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               ),
-              child: Text('CONECTAR', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+              child: Text('CONECTAR', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -271,7 +328,12 @@ class _IdeasViewState extends State<IdeasView> {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Conexiones Activas', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors.separator),
+        ),
+        title: Text('Conexiones Activas', style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
         content: SizedBox(
           width: 400,
           height: 300,
@@ -288,7 +350,7 @@ class _IdeasViewState extends State<IdeasView> {
                 return ListTile(
                   title: Text(
                     '${origenCard['titulo']} ⟷ ${destinoCard['titulo']}',
-                    style: GoogleFonts.inter(fontSize: 14, color: Colors.white70),
+                    style: GoogleFonts.outfit(fontSize: 14, color: AppColors.textSecondary),
                   ),
                   trailing: IconButton(
                     icon: const Icon(Icons.link_off, color: Colors.redAccent),
@@ -310,9 +372,15 @@ class _IdeasViewState extends State<IdeasView> {
           ),
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('CERRAR', style: GoogleFonts.inter(color: const Color(0xFF00F0FF), fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.accent,
+              side: BorderSide(color: AppColors.accent),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            ),
+            child: Text('CERRAR', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -325,12 +393,25 @@ class _IdeasViewState extends State<IdeasView> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    if (_tarjetas.isEmpty) {
+      return buildEmptyState(
+        icon: Icons.lightbulb_outline,
+        title: 'Aún no tienes ideas',
+        subtitle: 'Crea tu primera tarjeta en el corcho para capturar tus ideas.',
+        actionLabel: 'CREAR PRIMER IDEA',
+        onAction: _agregarTarjeta,
+      );
+    }
+
     return Scaffold(
-      backgroundColor: const Color(0xFF1C1C1E),
+      backgroundColor: AppColors.bg,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _agregarTarjeta,
-        icon: const Icon(Icons.add_rounded),
-        label: Text('NUEVA IDEA', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+        icon: const Icon(Icons.add_rounded, size: 18),
+        label: Text('NUEVA IDEA', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.accent,
+        foregroundColor: AppColors.bg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       body: Column(
         children: [
@@ -344,16 +425,16 @@ class _IdeasViewState extends State<IdeasView> {
                   children: [
                     Text(
                       'Muro de Ideas',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.outfit(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Conecta ideas, personajes y locaciones. Haz doble clic en el fondo para arrastrar el lienzo.',
-                    style: GoogleFonts.inter(color: const Color(0xFFAEAEB2), fontSize: 15),
+                    style: GoogleFonts.outfit(color: AppColors.textTertiary, fontSize: 15),
                     ),
                   ],
                 ),
@@ -361,10 +442,10 @@ class _IdeasViewState extends State<IdeasView> {
                 OutlinedButton.icon(
                   onPressed: _mostrarDialogoVincular,
                   icon: const Icon(Icons.hub_rounded, size: 18),
-                  label: Text('CONECTAR', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+                  label: Text('CONECTAR', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF00F0FF),
-                    side: const BorderSide(color: Color(0xFF00F0FF)),
+                    foregroundColor: AppColors.accent,
+                    side: BorderSide(color: AppColors.accent),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   ),
@@ -373,10 +454,10 @@ class _IdeasViewState extends State<IdeasView> {
                 OutlinedButton.icon(
                   onPressed: _mostrarDialogoConexiones,
                   icon: const Icon(Icons.link_off_rounded, size: 18),
-                  label: Text('CONEXIONES', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+                  label: Text('CONEXIONES', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: Colors.white24),
+                    foregroundColor: AppColors.accent,
+                    side: BorderSide(color: AppColors.accent),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   ),
@@ -390,9 +471,9 @@ class _IdeasViewState extends State<IdeasView> {
             child: Container(
               margin: const EdgeInsets.fromLTRB(32, 0, 32, 32),
               decoration: BoxDecoration(
-                color: const Color(0xFF12131F),
+                color: AppColors.bg,
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFF2E2F48), width: 1.5),
+                border: Border.all(color: AppColors.separator, width: 1.5),
               ),
               clipBehavior: Clip.antiAlias,
               child: InteractiveViewer(
@@ -409,7 +490,7 @@ class _IdeasViewState extends State<IdeasView> {
                       // Rejilla de Fondo y Conexiones
                       Positioned.fill(
                         child: GridPaper(
-                          color: const Color(0xFF3A3A3C),
+                          color: AppColors.surface,
                           interval: 100,
                           divisions: 1,
                           subdivisions: 1,
@@ -459,14 +540,14 @@ class ConnectionsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final glowPaint = Paint()
-      ..color = const Color(0xFF00F0FF).withValues(alpha: 0.25)
+      ..color = AppColors.accent.withValues(alpha: 0.25)
       ..strokeWidth = 7.0
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0);
 
     final linePaint = Paint()
-      ..color = const Color(0xFFAEAEB2)
+      ..color = AppColors.textTertiary
       ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;

@@ -4,6 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import '../database/app_database.dart';
+import '../shared/app_theme.dart';
+import '../shared/app_widgets.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:archive/archive.dart';
 class ExporterView extends StatefulWidget {
   final Map<String, dynamic> proyecto;
 
@@ -20,7 +25,7 @@ class _ExporterViewState extends State<ExporterView> {
   bool _isLoading = true;
 
   // Opciones de exportación
-  bool _formatoMarkdown = true; // true: MD, false: TXT
+  String _exportFormat = 'markdown'; // Options: 'markdown', 'txt', 'pdf', 'epub'
   bool _incluirTituloProyecto = true;
   bool _incluirSinopsis = true;
   bool _incluirNumeroCapitulo = true;
@@ -110,7 +115,7 @@ class _ExporterViewState extends State<ExporterView> {
     StringBuffer sb = StringBuffer();
 
     if (_incluirTituloProyecto) {
-      if (_formatoMarkdown) {
+      if (_exportFormat == 'markdown') {
         sb.writeln('# ${widget.proyecto['titulo'] ?? 'Sin título'}');
         sb.writeln();
       } else {
@@ -121,7 +126,7 @@ class _ExporterViewState extends State<ExporterView> {
     }
 
     if (_incluirSinopsis && widget.proyecto['sinopsis'] != null && widget.proyecto['sinopsis'].toString().trim().isNotEmpty) {
-      if (_formatoMarkdown) {
+      if (_exportFormat == 'markdown') {
         sb.writeln('> ${widget.proyecto['sinopsis']}');
         sb.writeln();
       } else {
@@ -150,7 +155,7 @@ class _ExporterViewState extends State<ExporterView> {
           headerText = titulo;
         }
 
-        if (_formatoMarkdown) {
+        if (_exportFormat == 'markdown') {
           sb.writeln('## $headerText');
           sb.writeln();
         } else {
@@ -191,7 +196,7 @@ class _ExporterViewState extends State<ExporterView> {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
-        backgroundColor: const Color(0xFF2C2C2E),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
           side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
@@ -212,7 +217,7 @@ class _ExporterViewState extends State<ExporterView> {
                       const SizedBox(width: 12),
                       Text(
                         'VISTA PREVIA',
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.outfit(
                           color: Colors.white,
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -224,22 +229,22 @@ class _ExporterViewState extends State<ExporterView> {
                     children: [
                       Text(
                         '$lineCount líneas · $_totalSelectedWords palabras',
-                        style: GoogleFonts.inter(color: Colors.white38, fontSize: 12),
+                        style: GoogleFonts.outfit(color: Colors.white38, fontSize: 12),
                       ),
                       const SizedBox(width: 16),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: _formatoMarkdown ? const Color(0xFF00F0FF).withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
+                          color: _exportFormat == 'markdown' ? AppColors.accent.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: _formatoMarkdown ? const Color(0xFF00F0FF) : Colors.white10,
+                            color: _exportFormat == 'markdown' ? AppColors.accent : Colors.white10,
                           ),
                         ),
                         child: Text(
-                          _formatoMarkdown ? '.md' : '.txt',
-                          style: GoogleFonts.inter(
-                            color: _formatoMarkdown ? const Color(0xFF00F0FF) : Colors.white54,
+                          _exportFormat == 'markdown' ? '.md' : _exportFormat == 'txt' ? '.txt' : _exportFormat == 'pdf' ? '.pdf' : '.epub',
+                          style: GoogleFonts.outfit(
+                            color: _exportFormat == 'markdown' ? AppColors.accent : Colors.white54,
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                           ),
@@ -257,7 +262,7 @@ class _ExporterViewState extends State<ExporterView> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3A3A3C),
+                    color: AppColors.surfaceLight,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                   ),
@@ -277,15 +282,18 @@ class _ExporterViewState extends State<ExporterView> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(
+                  OutlinedButton(
                     onPressed: () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textTertiary,
+                      side: BorderSide(color: AppColors.textTertiary.withValues(alpha: 0.3)),
+                    ),
                     child: Text(
                       'CERRAR',
-                      style: GoogleFonts.inter(color: Colors.white38, fontWeight: FontWeight.w600),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  ElevatedButton.icon(
+                  OutlinedButton.icon(
                     onPressed: () {
                       Navigator.pop(ctx);
                       _exportarManuscrito();
@@ -293,12 +301,6 @@ class _ExporterViewState extends State<ExporterView> {
                     icon: const Icon(Icons.download_rounded, size: 18),
                     label: Text(
                       'EXPORTAR',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.bold),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00F0FF),
-                      foregroundColor: Colors.black87,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                 ],
@@ -332,16 +334,19 @@ class _ExporterViewState extends State<ExporterView> {
     if (!mounted) return;
     Navigator.pop(context); // Cerrar diálogo de compilación
 
-    final content = _generateContent();
-
-    // Preparar nombre de archivo por defecto
     String cleanTitle = (widget.proyecto['titulo'] ?? 'manuscrito')
         .toString()
         .toLowerCase()
         .replaceAll(RegExp(r'[\\/:*?"<>| ]'), '_');
-    final ext = _formatoMarkdown ? 'md' : 'txt';
+    
+    final ext = _exportFormat == 'markdown'
+        ? 'md'
+        : _exportFormat == 'txt'
+            ? 'txt'
+            : _exportFormat == 'pdf'
+                ? 'pdf'
+                : 'epub';
 
-    // Abrir diálogo de guardado nativo
     final path = await FilePicker.platform.saveFile(
       dialogTitle: 'Exportar Manuscrito',
       fileName: '${cleanTitle}_compilado.$ext',
@@ -349,13 +354,19 @@ class _ExporterViewState extends State<ExporterView> {
       allowedExtensions: [ext],
     );
 
-    if (path == null) return; // Cancelado por el usuario
+    if (path == null) return;
 
     try {
-      final file = File(path);
-      await file.writeAsString(content);
+      if (_exportFormat == 'pdf') {
+        await _exportarPDF(path);
+      } else if (_exportFormat == 'epub') {
+        await _exportarEPUB(path);
+      } else {
+        final content = _generateContent();
+        final file = File(path);
+        await file.writeAsString(content);
+      }
 
-      // Mostrar diálogo de éxito premium
       if (!mounted) return;
       showDialog(
         context: context,
@@ -365,7 +376,7 @@ class _ExporterViewState extends State<ExporterView> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error al escribir el archivo: $e'),
+          content: Text('Error al exportar el archivo: $e'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -383,11 +394,11 @@ class _ExporterViewState extends State<ExporterView> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.warning_amber_rounded, size: 64, color: Color(0xFF00F0FF)),
+            Icon(Icons.warning_amber_rounded, size: 64, color: AppColors.accent),
             const SizedBox(height: 16),
             Text(
               'No se encontró ningún manuscrito asociado.',
-              style: GoogleFonts.inter(color: Colors.white70, fontSize: 18),
+              style: GoogleFonts.outfit(color: Colors.white70, fontSize: 18),
             ),
           ],
         ),
@@ -395,7 +406,7 @@ class _ExporterViewState extends State<ExporterView> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0B14),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Padding(
         padding: const EdgeInsets.all(40.0),
         child: Column(
@@ -409,7 +420,7 @@ class _ExporterViewState extends State<ExporterView> {
                   children: [
                     Text(
                       'Compilador de Manuscrito',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.outfit(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
@@ -418,12 +429,12 @@ class _ExporterViewState extends State<ExporterView> {
                     const SizedBox(height: 8),
                     Text(
                       'Une tus capítulos, personaliza el formato y exporta tu borrador listo para publicar.',
-                      style: GoogleFonts.inter(color: Colors.white38, fontSize: 16),
+                      style: GoogleFonts.outfit(color: Colors.white38, fontSize: 16),
                     ),
                   ],
                 ),
                 const Spacer(),
-                Icon(Icons.download_rounded, color: const Color(0xFF00F0FF).withValues(alpha: 0.2), size: 48),
+                Icon(Icons.download_rounded, color: AppColors.accent.withValues(alpha: 0.2), size: 48),
               ],
             ),
             const SizedBox(height: 32),
@@ -465,7 +476,7 @@ class _ExporterViewState extends State<ExporterView> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF12131F),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
@@ -474,8 +485,8 @@ class _ExporterViewState extends State<ExporterView> {
         children: [
           Text(
             'CONFIGURACIÓN DE EXPORTACIÓN',
-            style: GoogleFonts.inter(
-              color: const Color(0xFF00F0FF),
+            style: GoogleFonts.outfit(
+              color: AppColors.accent,
               fontSize: 12,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.5,
@@ -486,20 +497,35 @@ class _ExporterViewState extends State<ExporterView> {
           // Formato Selector (MD vs TXT)
           Text(
             'FORMATO DE ARCHIVO',
-            style: GoogleFonts.inter(color: Colors.white30, fontSize: 10, fontWeight: FontWeight.bold),
+            style: GoogleFonts.outfit(color: Colors.white30, fontSize: 10, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Expanded(
-                child: _buildFormatButton('Markdown (.md)', _formatoMarkdown, () {
-                  setState(() => _formatoMarkdown = true);
+              SizedBox(
+                width: 150,
+                child: _buildFormatButton('Markdown (.md)', _exportFormat == 'markdown', () {
+                  setState(() => _exportFormat = 'markdown');
                 }),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildFormatButton('Texto Plano (.txt)', !_formatoMarkdown, () {
-                  setState(() => _formatoMarkdown = false);
+              SizedBox(
+                width: 150,
+                child: _buildFormatButton('Texto Plano (.txt)', _exportFormat == 'txt', () {
+                  setState(() => _exportFormat = 'txt');
+                }),
+              ),
+              SizedBox(
+                width: 150,
+                child: _buildFormatButton('PDF (.pdf)', _exportFormat == 'pdf', () {
+                  setState(() => _exportFormat = 'pdf');
+                }),
+              ),
+              SizedBox(
+                width: 150,
+                child: _buildFormatButton('EPUB (.epub)', _exportFormat == 'epub', () {
+                  setState(() => _exportFormat = 'epub');
                 }),
               ),
             ],
@@ -541,7 +567,7 @@ class _ExporterViewState extends State<ExporterView> {
           // Separador Dropdown
           Text(
             'SEPARADOR ENTRE CAPÍTULOS',
-            style: GoogleFonts.inter(color: Colors.white30, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+            style: GoogleFonts.outfit(color: Colors.white30, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
           ),
           const SizedBox(height: 12),
           Container(
@@ -551,30 +577,21 @@ class _ExporterViewState extends State<ExporterView> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white10),
             ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _separador,
-                dropdownColor: const Color(0xFF12131F),
-                style: GoogleFonts.inter(color: Colors.white70, fontSize: 14),
-                icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white38),
-                isExpanded: true,
-                items: [
-                  'Salto de Página (\\f)',
-                  'Línea Horizontal (---)',
-                  'Asteriscos (***)',
-                  'Espacio Doble',
-                ].map((String val) {
-                  return DropdownMenuItem<String>(
-                    value: val,
-                    child: Text(val),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() => _separador = val);
-                  }
-                },
-              ),
+            child: AppDropdown<String>(
+              value: _separador,
+              items: [
+                'Salto de Página (\\f)',
+                'Línea Horizontal (---)',
+                'Asteriscos (***)',
+                'Espacio Doble',
+              ].map((val) {
+                return AppDropdownItem<String>(value: val, label: val);
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _separador = val);
+                }
+              },
             ),
           ),
         ],
@@ -583,26 +600,29 @@ class _ExporterViewState extends State<ExporterView> {
   }
 
   Widget _buildFormatButton(String label, bool isSelected, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF00F0FF).withValues(alpha: 0.08) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF00F0FF) : Colors.white10,
-            width: 1.5,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.accent.withValues(alpha: 0.08) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? AppColors.accent : Colors.white10,
+              width: 1.5,
+            ),
           ),
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: GoogleFonts.inter(
-            color: isSelected ? const Color(0xFF00F0FF) : Colors.white54,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 14,
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(
+              color: isSelected ? AppColors.accent : Colors.white54,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              fontSize: 14,
+            ),
           ),
         ),
       ),
@@ -626,12 +646,12 @@ class _ExporterViewState extends State<ExporterView> {
               children: [
                 Text(
                   title,
-                  style: GoogleFonts.inter(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
+                  style: GoogleFonts.outfit(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: GoogleFonts.inter(color: Colors.white30, fontSize: 12),
+                  style: GoogleFonts.outfit(color: Colors.white30, fontSize: 12),
                 ),
               ],
             ),
@@ -639,8 +659,8 @@ class _ExporterViewState extends State<ExporterView> {
           const SizedBox(width: 12),
           Switch(
             value: value,
-            activeThumbColor: const Color(0xFF00F0FF),
-            activeTrackColor: const Color(0xFF00F0FF).withValues(alpha: 0.3),
+            activeThumbColor: AppColors.accent,
+            activeTrackColor: AppColors.accent.withValues(alpha: 0.3),
             inactiveThumbColor: Colors.white24,
             inactiveTrackColor: Colors.white10,
             onChanged: onChanged,
@@ -654,7 +674,7 @@ class _ExporterViewState extends State<ExporterView> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF12131F),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
@@ -665,11 +685,11 @@ class _ExporterViewState extends State<ExporterView> {
             children: [
               Text(
                 'Capítulos a compilar:',
-                style: GoogleFonts.inter(color: Colors.white38, fontSize: 14),
+                style: GoogleFonts.outfit(color: Colors.white38, fontSize: 14),
               ),
               Text(
                 '$_totalSelectedChapters / ${_capitulos.length}',
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -679,44 +699,30 @@ class _ExporterViewState extends State<ExporterView> {
             children: [
               Text(
                 'Total palabras estimadas:',
-                style: GoogleFonts.inter(color: Colors.white38, fontSize: 14),
+                style: GoogleFonts.outfit(color: Colors.white38, fontSize: 14),
               ),
               Text(
                 '$_totalSelectedWords palabras',
-                style: GoogleFonts.inter(color: const Color(0xFF00F0FF), fontSize: 16, fontWeight: FontWeight.bold),
+                style: GoogleFonts.outfit(color: AppColors.accent, fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          ElevatedButton.icon(
+          OutlinedButton.icon(
             onPressed: _mostrarPreview,
             icon: const Icon(Icons.preview_rounded, size: 20),
             label: Text(
               'VISTA PREVIA',
-              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF1C1C1E),
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: 0,
+              style: GoogleFonts.outfit(fontSize: 15),
             ),
           ),
           const SizedBox(height: 12),
-          ElevatedButton.icon(
+          OutlinedButton.icon(
             onPressed: _exportarManuscrito,
             icon: const Icon(Icons.auto_awesome_rounded, size: 20),
             label: Text(
               'COMPILAR Y EXPORTAR',
-              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00F0FF),
-              foregroundColor: Colors.black87,
-              minimumSize: const Size.fromHeight(56),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: 0,
+              style: GoogleFonts.outfit(fontSize: 15),
             ),
           ),
         ],
@@ -728,7 +734,7 @@ class _ExporterViewState extends State<ExporterView> {
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: const Color(0xFF12131F),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
@@ -739,7 +745,7 @@ class _ExporterViewState extends State<ExporterView> {
             children: [
               Text(
                 'ESTRUCTURA DEL MANUSCRITO',
-                style: GoogleFonts.inter(
+                style: GoogleFonts.outfit(
                   color: Colors.white70,
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -747,7 +753,7 @@ class _ExporterViewState extends State<ExporterView> {
                 ),
               ),
               const Spacer(),
-              TextButton(
+              OutlinedButton(
                 onPressed: () {
                   setState(() {
                     for (var c in _capitulos) {
@@ -755,7 +761,7 @@ class _ExporterViewState extends State<ExporterView> {
                     }
                   });
                 },
-                child: Text('Seleccionar todos', style: GoogleFonts.inter(color: const Color(0xFF00F0FF), fontSize: 12)),
+                child: Text('Seleccionar todos', style: GoogleFonts.outfit(fontSize: 12)),
               ),
               Container(
                 height: 12,
@@ -763,7 +769,7 @@ class _ExporterViewState extends State<ExporterView> {
                 margin: const EdgeInsets.symmetric(horizontal: 8),
                 color: Colors.white10,
               ),
-              TextButton(
+              OutlinedButton(
                 onPressed: () {
                   setState(() {
                     for (var c in _capitulos) {
@@ -771,7 +777,11 @@ class _ExporterViewState extends State<ExporterView> {
                     }
                   });
                 },
-                child: Text('Deseleccionar todos', style: GoogleFonts.inter(color: Colors.white38, fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.textTertiary,
+                  side: BorderSide(color: AppColors.textTertiary.withValues(alpha: 0.3)),
+                ),
+                child: Text('Deseleccionar todos', style: GoogleFonts.outfit(fontSize: 12)),
               ),
             ],
           ),
@@ -780,11 +790,10 @@ class _ExporterViewState extends State<ExporterView> {
           const SizedBox(height: 16),
           Expanded(
             child: _capitulos.isEmpty
-                ? Center(
-                    child: Text(
-                      'No hay capítulos registrados en este manuscrito.',
-                      style: GoogleFonts.inter(color: Colors.white24, fontSize: 15),
-                    ),
+                ? buildEmptyState(
+                    icon: Icons.article_outlined,
+                    title: 'No hay capítulos registrados',
+                    subtitle: 'Este manuscrito no tiene capítulos aún.',
                   )
                 : ListView.builder(
                     itemCount: _capitulos.length,
@@ -811,7 +820,7 @@ class _ExporterViewState extends State<ExporterView> {
                               _seleccionados[id] = val ?? false;
                             });
                           },
-                          activeColor: const Color(0xFF00F0FF),
+                          activeColor: AppColors.accent,
                           checkColor: Colors.black87,
                           title: Row(
                             children: [
@@ -819,14 +828,14 @@ class _ExporterViewState extends State<ExporterView> {
                                 width: 28,
                                 height: 28,
                                 decoration: BoxDecoration(
-                                  color: isSelected ? const Color(0xFF00F0FF).withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.03),
+                                  color: isSelected ? AppColors.accent.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.03),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Center(
                                   child: Text(
                                     '${index + 1}',
                                     style: GoogleFonts.jetBrainsMono(
-                                      color: isSelected ? const Color(0xFF00F0FF) : Colors.white38,
+                                      color: isSelected ? AppColors.accent : Colors.white38,
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -837,7 +846,7 @@ class _ExporterViewState extends State<ExporterView> {
                               Expanded(
                                 child: Text(
                                   cap['titulo'] ?? 'Capítulo sin título',
-                                  style: GoogleFonts.inter(
+                                  style: GoogleFonts.outfit(
                                     color: isSelected ? Colors.white : Colors.white38,
                                     fontSize: 16,
                                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -853,7 +862,7 @@ class _ExporterViewState extends State<ExporterView> {
                               children: [
                                 Text(
                                   '$count palabras',
-                                  style: GoogleFonts.inter(
+                                  style: GoogleFonts.outfit(
                                     color: isSelected ? Colors.white30 : Colors.white12,
                                     fontSize: 12,
                                   ),
@@ -869,7 +878,7 @@ class _ExporterViewState extends State<ExporterView> {
                                   ),
                                   child: Text(
                                     tipo.toUpperCase(),
-                                    style: GoogleFonts.inter(
+                                    style: GoogleFonts.outfit(
                                       color: (tipo == 'prologo' || tipo == 'epilogo')
                                           ? Colors.purpleAccent.withValues(alpha: 0.7)
                                           : Colors.white24,
@@ -892,6 +901,248 @@ class _ExporterViewState extends State<ExporterView> {
       ),
     );
   }
+
+  Future<void> _exportarPDF(String path) async {
+    final pdf = pw.Document();
+    final font = pw.Font.helvetica();
+    final fontBold = pw.Font.helveticaBold();
+
+    if (_incluirTituloProyecto) {
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(54),
+          build: (context) => pw.Center(
+            child: pw.Column(
+              mainAxisAlignment: pw.MainAxisAlignment.center,
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.SizedBox(height: 100),
+                pw.Text(
+                  widget.proyecto['titulo'] ?? 'Sin Título',
+                  style: pw.TextStyle(font: fontBold, fontSize: 32),
+                  textAlign: pw.TextAlign.center,
+                ),
+                if (widget.proyecto['autor'] != null) ...[
+                  pw.SizedBox(height: 20),
+                  pw.Text(
+                    'Por: ${widget.proyecto['autor']}',
+                    style: pw.TextStyle(font: font, fontSize: 18),
+                  ),
+                ],
+                pw.SizedBox(height: 100),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_incluirSinopsis && widget.proyecto['sinopsis'] != null) {
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(54),
+          build: (context) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'SINOPSIS',
+                style: pw.TextStyle(font: fontBold, fontSize: 18),
+              ),
+              pw.SizedBox(height: 12),
+              pw.Text(
+                widget.proyecto['sinopsis']!,
+                style: pw.TextStyle(font: font, fontSize: 12, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    int capIdx = 1;
+    for (var c in _capitulos) {
+      if (_seleccionados[c['id']] == true) {
+        final title = c['titulo'] ?? '';
+        final text = _getPlainText(c['contenido'] ?? '');
+
+        pdf.addPage(
+          pw.MultiPage(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.all(54),
+            build: (context) => [
+              if (_incluirNumeroCapitulo)
+                pw.Text(
+                  'CAPÍTULO $capIdx',
+                  style: pw.TextStyle(font: fontBold, fontSize: 14, color: PdfColors.grey700),
+                ),
+              if (_incluirTituloCapitulo && title.isNotEmpty) ...[
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  title,
+                  style: pw.TextStyle(font: fontBold, fontSize: 22),
+                ),
+              ],
+              pw.SizedBox(height: 16),
+              pw.Paragraph(
+                text: text,
+                style: pw.TextStyle(font: font, fontSize: 12, height: 1.6),
+              ),
+            ],
+          ),
+        );
+        capIdx++;
+      }
+    }
+
+    final file = File(path);
+    await file.writeAsBytes(await pdf.save());
+  }
+
+  Future<void> _exportarEPUB(String path) async {
+    final archive = Archive();
+    final mimetypeBytes = utf8.encode('application/epub+zip');
+    archive.addFile(ArchiveFile.noCompress('mimetype', mimetypeBytes.length, mimetypeBytes));
+
+    final containerXml = """<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>""";
+    archive.addFile(ArchiveFile('META-INF/container.xml', containerXml.length, utf8.encode(containerXml)));
+
+    final spineItems = <String>[];
+    final manifestItems = <String>[];
+    final tocEntries = <String>[];
+    int index = 1;
+
+    if (_incluirTituloProyecto) {
+      final titleHtml = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="es" lang="es">
+<head>
+  <title>${widget.proyecto['titulo'] ?? 'Novela'}</title>
+  <style>
+    body { text-align: center; font-family: sans-serif; padding: 50px; }
+    h1 { font-size: 3em; margin-top: 100px; }
+    h2 { font-size: 1.5em; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>${widget.proyecto['titulo'] ?? 'Novela'}</h1>
+  <h2>Novela compilada con Novel Writer</h2>
+</body>
+</html>""";
+      archive.addFile(ArchiveFile('EPUB/title.xhtml', titleHtml.length, utf8.encode(titleHtml)));
+      manifestItems.add('<item id="title" href="title.xhtml" media-type="application/xhtml+xml"/>');
+      spineItems.add('<itemref idref="title"/>');
+      tocEntries.add('<navPoint id="title" playOrder="$index"><navLabel><text>Portada</text></navLabel><content src="title.xhtml"/></navPoint>');
+      index++;
+    }
+
+    if (_incluirSinopsis && widget.proyecto['sinopsis'] != null) {
+      final sinopsisHtml = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="es" lang="es">
+<head>
+  <title>Sinopsis</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+    h1 { text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Sinopsis</h1>
+  <p>${widget.proyecto['sinopsis']?.replaceAll('\n', '<br/>')}</p>
+</body>
+</html>""";
+      archive.addFile(ArchiveFile('EPUB/sinopsis.xhtml', sinopsisHtml.length, utf8.encode(sinopsisHtml)));
+      manifestItems.add('<item id="sinopsis" href="sinopsis.xhtml" media-type="application/xhtml+xml"/>');
+      spineItems.add('<itemref idref="sinopsis"/>');
+      tocEntries.add('<navPoint id="sinopsis" playOrder="$index"><navLabel><text>Sinopsis</text></navLabel><content src="sinopsis.xhtml"/></navPoint>');
+      index++;
+    }
+
+    int capIdx = 1;
+    for (var c in _capitulos) {
+      if (_seleccionados[c['id']] == true) {
+        final title = c['titulo'] ?? '';
+        final text = _getPlainText(c['contenido'] ?? '');
+        final idStr = 'chapter_$capIdx';
+
+        final html = """<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="es" lang="es">
+<head>
+  <title>$title</title>
+  <style>
+    body { font-family: serif; padding: 20px; line-height: 1.8; font-size: 1.1em; }
+    h1 { font-size: 1.8em; margin-bottom: 20px; text-align: center; }
+    .chap-num { text-align: center; color: #666; font-size: 0.9em; margin-bottom: 5px; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  ${_incluirNumeroCapitulo ? '<div class="chap-num">Capítulo $capIdx</div>' : ''}
+  ${_incluirTituloCapitulo && title.isNotEmpty ? '<h1>$title</h1>' : ''}
+  <p>${text.replaceAll('\n', '</p><p>')}</p>
+</body>
+</html>""";
+
+        archive.addFile(ArchiveFile('EPUB/$idStr.xhtml', html.length, utf8.encode(html)));
+        manifestItems.add('<item id="$idStr" href="$idStr.xhtml" media-type="application/xhtml+xml"/>');
+        spineItems.add('<itemref idref="$idStr"/>');
+        
+        final tocTitle = title.isNotEmpty ? title : 'Capítulo $capIdx';
+        tocEntries.add('<navPoint id="$idStr" playOrder="$index"><navLabel><text>$tocTitle</text></navLabel><content src="$idStr.xhtml"/></navPoint>');
+        
+        index++;
+        capIdx++;
+      }
+    }
+
+    final tocNcx = """<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid" content="urn:uuid:${widget.proyecto['id']}"/>
+    <meta name="dtb:depth" content="1"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber" content="0"/>
+  </head>
+  <docTitle>
+    <text>${widget.proyecto['titulo'] ?? 'Novela'}</text>
+  </docTitle>
+  <navMap>
+    ${tocEntries.join('\n    ')}
+  </navMap>
+</ncx>""";
+    archive.addFile(ArchiveFile('EPUB/toc.ncx', tocNcx.length, utf8.encode(tocNcx)));
+    manifestItems.add('<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>');
+
+    final contentOpf = """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookID" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:title>${widget.proyecto['titulo'] ?? 'Novela'}</dc:title>
+    <dc:language>es</dc:language>
+    <dc:identifier id="BookID">urn:uuid:${widget.proyecto['id']}</dc:identifier>
+    <dc:creator>${widget.proyecto['autor'] ?? 'Autor'}</dc:creator>
+  </metadata>
+  <manifest>
+    ${manifestItems.join('\n    ')}
+  </manifest>
+  <spine toc="ncx">
+    ${spineItems.join('\n    ')}
+  </spine>
+</package>""";
+    archive.addFile(ArchiveFile('EPUB/content.opf', contentOpf.length, utf8.encode(contentOpf)));
+
+    final zipEncoder = ZipEncoder();
+    final zipData = zipEncoder.encode(archive);
+    final file = File(path);
+    await file.writeAsBytes(zipData!);
+  }
+
 }
 
 class _CompilationDialog extends StatelessWidget {
@@ -900,7 +1151,7 @@ class _CompilationDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: const Color(0xFF2C2C2E),
+      backgroundColor: AppColors.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: Container(
         width: 320,
@@ -908,13 +1159,13 @@ class _CompilationDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00F0FF)),
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
             ),
             const SizedBox(height: 32),
             Text(
               'Compilando borrador...',
-              style: GoogleFonts.inter(
+              style: GoogleFonts.outfit(
                 color: Colors.white,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -924,7 +1175,7 @@ class _CompilationDialog extends StatelessWidget {
             Text(
               'Concatenando capítulos y dando formato premium.',
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
+              style: GoogleFonts.outfit(
                 color: Colors.white38,
                 fontSize: 12,
               ),
@@ -944,14 +1195,14 @@ class _SuccessDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: const Color(0xFF2C2C2E),
+      backgroundColor: AppColors.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: Container(
         width: 480,
         padding: const EdgeInsets.all(40),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFF00F0FF).withValues(alpha: 0.3), width: 1.5),
+          border: Border.all(color: AppColors.accent.withValues(alpha: 0.3), width: 1.5),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -969,7 +1220,7 @@ class _SuccessDialog extends StatelessWidget {
             const SizedBox(height: 32),
             Text(
               '¡Exportación Exitosa!',
-              style: GoogleFonts.inter(
+              style: GoogleFonts.outfit(
                 color: Colors.white,
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -979,7 +1230,7 @@ class _SuccessDialog extends StatelessWidget {
             Text(
               'Tu manuscrito ha sido compilado y guardado en tu equipo.',
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(color: Colors.white54, fontSize: 14),
+              style: GoogleFonts.outfit(color: Colors.white54, fontSize: 14),
             ),
             const SizedBox(height: 24),
             Container(
@@ -992,22 +1243,15 @@ class _SuccessDialog extends StatelessWidget {
               ),
               child: SelectableText(
                 filePath,
-                style: GoogleFonts.jetBrainsMono(color: const Color(0xFF00F0FF), fontSize: 11),
+                style: GoogleFonts.jetBrainsMono(color: AppColors.accent, fontSize: 11),
                 textAlign: TextAlign.center,
               ),
             ),
             const SizedBox(height: 32),
-            ElevatedButton(
+            OutlinedButton(
               onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00F0FF),
-                foregroundColor: Colors.black87,
-                minimumSize: const Size.fromHeight(48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
               child: Text(
                 'ENTENDIDO',
-                style: GoogleFonts.inter(fontWeight: FontWeight.bold),
               ),
             )
           ],

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'shared/app_theme.dart';
+import 'shared/theme_provider.dart';
+import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
@@ -28,11 +30,17 @@ void main() async {
       win.size = const Size(1280, 720);
       win.alignment = Alignment.center;
       win.title = 'Novel Writer';
+      win.maximize();
       win.show();
     });
   }
 
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatefulWidget {
@@ -50,6 +58,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     return Shortcuts(
       shortcuts: {
         AppShortcuts.ctrl(LogicalKeyboardKey.keyN): _NewProjectIntent(),
@@ -78,7 +87,9 @@ class _MyAppState extends State<MyApp> {
           navigatorKey: _navigatorKey,
           title: 'Novel Writer',
           debugShowCheckedModeBanner: false,
-          theme: _buildTheme(),
+          theme: AppColors.lightTheme,
+          darkTheme: AppColors.darkTheme,
+          themeMode: themeProvider.isDark ? ThemeMode.dark : ThemeMode.light,
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -101,7 +112,7 @@ class _MyAppState extends State<MyApp> {
             if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
               return Scaffold(
                 body: WindowBorder(
-                  color: const Color(0xFF3A3A3C),
+                  color: AppColors.bg,
                   child: Column(
                     children: [
                       const CustomTitleBar(),
@@ -127,7 +138,7 @@ class _MyAppState extends State<MyApp> {
     setState(() => _isFullScreen = !_isFullScreen);
   }
 
-  ThemeData _buildTheme() => AppColors.darkTheme;
+  ThemeData _buildTheme() => AppColors.lightTheme;
 }
 
 // Intent classes

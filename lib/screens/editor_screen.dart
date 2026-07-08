@@ -2,12 +2,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import '../database/app_database.dart';
 import '../widgets/draggable_card.dart';
 import '../widgets/editor_widgets.dart';
 import '../shared/app_widgets.dart';
+import '../shared/app_theme.dart';
+import '../models/novel_style.dart';
+import '../widgets/atajo_recorder.dart';
 
 class EditorScreen extends StatefulWidget {
   final Map<String, dynamic> proyecto;
@@ -23,13 +27,11 @@ class EditorScreen extends StatefulWidget {
 }
 
 class _EditorScreenState extends State<EditorScreen> {
-  static const List<double> _kFontSizes = [
-    8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 48, 56, 64, 72,
-  ];
-
   late QuillController _quillController;
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _fontSizeController = TextEditingController(text: '18');
+  final TextEditingController _fontSizeController = TextEditingController(
+    text: '18',
+  );
   final FocusNode _editorFocusNode = FocusNode();
   final FocusNode _fontSizeFocusNode = FocusNode();
   bool _isQuillInitialized = false;
@@ -68,13 +70,16 @@ class _EditorScreenState extends State<EditorScreen> {
   int _sessionWordsWritten = 0;
 
   // Personalización del Entorno (Fijo para diseño premium y limpio)
-  Color _pageColor = const Color(0xFFFFFFFF); // Papel de escritura blanco elegante
+  Color _pageColor = const Color(
+    0xFFFFFFFF,
+  ); // Papel de escritura blanco elegante
   String _fontFamily = 'Merriweather';
   double _fontSize = 18;
   double _lineHeight = 1.8;
 
   int _wordCount = 0;
   int _charCount = 0;
+  List<NovelStyle> _estilos = [];
 
   String _lastSavedText = '';
   String _lastSavedTitle = '';
@@ -83,9 +88,23 @@ class _EditorScreenState extends State<EditorScreen> {
   double _lastSavedFontSize = 18;
   double _lastSavedLineHeight = 1.8;
 
+  bool _kbdHandler(KeyEvent event) {
+    if (!_editorFocusNode.hasFocus) return false;
+    if (event is! KeyDownEvent) return false;
+    final combo = pressedKeyCombo(event.logicalKey);
+    if (combo == null) return false;
+    final matching = _estilos.where((s) => s.atajo == combo).firstOrNull;
+    if (matching != null) {
+      _applyStyle(matching.id!);
+      return true;
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_kbdHandler);
     _inicializar();
     // Aplicar tamaño cuando el campo de fuente pierde el foco
     _fontSizeFocusNode.addListener(() {
@@ -114,6 +133,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
   String _colorToHex(Color color) =>
       '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+
+  Color _hexToColor(String hex) {
+    hex = hex.replaceFirst('#', '');
+    if (hex.length == 6) hex = 'FF$hex';
+    return Color(int.parse(hex, radix: 16));
+  }
 
   int _countWords(String text) {
     var count = 0;
@@ -153,7 +178,9 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _updateStatsImmediate() {
-    final text = _isQuillInitialized ? _quillController.document.toPlainText() : '';
+    final text = _isQuillInitialized
+        ? _quillController.document.toPlainText()
+        : '';
     _wordCount = _countWords(text);
     _charCount = text.length;
     _updateSessionWords();
@@ -163,7 +190,9 @@ class _EditorScreenState extends State<EditorScreen> {
     _statsTimer?.cancel();
     _statsTimer = Timer(const Duration(milliseconds: 250), () {
       if (!mounted) return;
-      final text = _isQuillInitialized ? _quillController.document.toPlainText() : '';
+      final text = _isQuillInitialized
+          ? _quillController.document.toPlainText()
+          : '';
       setState(() {
         _wordCount = _countWords(text);
         _charCount = text.length;
@@ -180,8 +209,10 @@ class _EditorScreenState extends State<EditorScreen> {
         'contenido': jsonEncode(_quillController.document.toDelta().toJson()),
       };
     }
-    final currentTotal = _capitulos.map((c) => _countWords(_getChapterPlainText(c['contenido'] ?? ''))).fold(0, (a, b) => a + b);
-    
+    final currentTotal = _capitulos
+        .map((c) => _countWords(_getChapterPlainText(c['contenido'] ?? '')))
+        .fold(0, (a, b) => a + b);
+
     if (mounted) {
       setState(() {
         _sessionWordsWritten = max(0, currentTotal - _initialWordCountTotal);
@@ -245,32 +276,42 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Widget _buildAppBarPomodoroTimer() {
-    if (!_isPomodoroRunning && _pomodoroSecondsRemaining == _pomodoroDurationMinutes * 60) {
+    if (!_isPomodoroRunning &&
+        _pomodoroSecondsRemaining == _pomodoroDurationMinutes * 60) {
       return Container();
     }
     final minutes = _pomodoroSecondsRemaining ~/ 60;
     final seconds = _pomodoroSecondsRemaining % 60;
-    final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-    
+    final timeStr =
+        '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
     return Tooltip(
-      message: _isPomodoroRunning ? 'Pomodoro activo. ¡Sigue escribiendo!' : 'Pomodoro pausado',
+      message: _isPomodoroRunning
+          ? 'Pomodoro activo. ¡Sigue escribiendo!'
+          : 'Pomodoro pausado',
       child: Center(
         child: Container(
           margin: const EdgeInsets.only(right: 12),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
-            color: _isPomodoroRunning ? const Color(0xFF00F0FF).withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
+            color: _isPomodoroRunning
+                ? AppColors.accent.withValues(alpha: 0.1)
+                : Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: _isPomodoroRunning ? const Color(0xFF00F0FF) : Colors.white24,
+              color: _isPomodoroRunning
+                  ? const Color(0xFF00F0FF)
+                  : Colors.white24,
               width: 1,
             ),
-            boxShadow: _isPomodoroRunning ? [
-              BoxShadow(
-                color: const Color(0xFF00F0FF).withValues(alpha: 0.15),
-                blurRadius: 8,
-              )
-            ] : null,
+            boxShadow: _isPomodoroRunning
+                ? [
+                    BoxShadow(
+                      color: AppColors.accent.withValues(alpha: 0.15),
+                      blurRadius: 8,
+                    ),
+                  ]
+                : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -278,7 +319,7 @@ class _EditorScreenState extends State<EditorScreen> {
               Icon(
                 Icons.hourglass_bottom_rounded,
                 size: 14,
-                color: _isPomodoroRunning ? const Color(0xFF00F0FF) : Colors.white30,
+                color: _isPomodoroRunning ? AppColors.accent : Colors.white30,
               ),
               const SizedBox(width: 6),
               Text(
@@ -286,7 +327,9 @@ class _EditorScreenState extends State<EditorScreen> {
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: _isPomodoroRunning ? const Color(0xFF00F0FF) : Colors.white70,
+                  color: _isPomodoroRunning
+                      ? const Color(0xFF00F0FF)
+                      : Colors.white70,
                 ),
               ),
             ],
@@ -299,14 +342,16 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget _buildPomodoroSection(ThemeData theme) {
     final minutes = _pomodoroSecondsRemaining ~/ 60;
     final seconds = _pomodoroSecondsRemaining % 60;
-    final timeStr = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-    final double progress = _pomodoroSecondsRemaining / (_pomodoroDurationMinutes * 60);
-    
+    final timeStr =
+        '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    final double progress =
+        _pomodoroSecondsRemaining / (_pomodoroDurationMinutes * 60);
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E).withValues(alpha: 0.6),
+        color: AppColors.card.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
@@ -325,7 +370,9 @@ class _EditorScreenState extends State<EditorScreen> {
                     strokeWidth: 6,
                     backgroundColor: Colors.white.withValues(alpha: 0.03),
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      _isPomodoroRunning ? const Color(0xFF00F0FF) : const Color(0xFFAEAEB2),
+                      _isPomodoroRunning
+                          ? const Color(0xFF00F0FF)
+                          : const Color(0xFFAEAEB2),
                     ),
                   ),
                 ),
@@ -339,7 +386,9 @@ class _EditorScreenState extends State<EditorScreen> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF00F0FF).withValues(alpha: 0.1),
+                            color: const Color(
+                              0xFF00F0FF,
+                            ).withValues(alpha: 0.1),
                             blurRadius: 16,
                             spreadRadius: 2,
                           ),
@@ -355,16 +404,20 @@ class _EditorScreenState extends State<EditorScreen> {
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 26,
                         fontWeight: FontWeight.bold,
-                        color: _isPomodoroRunning ? Colors.white : Colors.white38,
+                        color: _isPomodoroRunning
+                            ? Colors.white
+                            : Colors.white38,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       _isPomodoroRunning ? 'ENFOQUE' : 'PAUSA',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.outfit(
                         fontSize: 9,
                         fontWeight: FontWeight.bold,
-                        color: _isPomodoroRunning ? const Color(0xFF00F0FF) : Colors.white24,
+                        color: _isPomodoroRunning
+                            ? AppColors.accent
+                            : Colors.white24,
                         letterSpacing: 1.5,
                       ),
                     ),
@@ -374,7 +427,7 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          
+
           // Controls
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -382,25 +435,34 @@ class _EditorScreenState extends State<EditorScreen> {
               // Play/Pause button
               Material(
                 color: Colors.transparent,
-                child: InkWell(
-                  onTap: _isPomodoroRunning ? _pausePomodoro : _startPomodoro,
-                  borderRadius: BorderRadius.circular(50),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _isPomodoroRunning 
-                          ? const Color(0xFF00F0FF).withValues(alpha: 0.1)
-                          : Colors.white.withValues(alpha: 0.05),
-                      border: Border.all(
-                        color: _isPomodoroRunning ? const Color(0xFF00F0FF) : Colors.white24,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: InkWell(
+                    onTap: _isPomodoroRunning ? _pausePomodoro : _startPomodoro,
+                    borderRadius: BorderRadius.circular(50),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _isPomodoroRunning
+                            ? const Color(0xFF00F0FF).withValues(alpha: 0.1)
+                            : Colors.white.withValues(alpha: 0.05),
+                        border: Border.all(
+                          color: _isPomodoroRunning
+                              ? AppColors.accent
+                              : Colors.white24,
+                        ),
                       ),
-                    ),
-                    child: Icon(
-                      _isPomodoroRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      color: _isPomodoroRunning ? const Color(0xFF00F0FF) : Colors.white70,
-                      size: 20,
+                      child: Icon(
+                        _isPomodoroRunning
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        color: _isPomodoroRunning
+                            ? AppColors.accent
+                            : Colors.white70,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
@@ -409,20 +471,25 @@ class _EditorScreenState extends State<EditorScreen> {
               // Reset button
               Material(
                 color: Colors.transparent,
-                child: InkWell(
-                  onTap: _resetPomodoro,
-                  borderRadius: BorderRadius.circular(50),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.02),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                    ),
-                    child: const Icon(
-                      Icons.replay_rounded,
-                      color: Colors.white38,
-                      size: 20,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: InkWell(
+                    onTap: _resetPomodoro,
+                    borderRadius: BorderRadius.circular(50),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.02),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.replay_rounded,
+                        color: Colors.white38,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
@@ -430,7 +497,7 @@ class _EditorScreenState extends State<EditorScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          
+
           // Presets
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -439,29 +506,38 @@ class _EditorScreenState extends State<EditorScreen> {
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: InkWell(
-                    onTap: () => _setPomodoroDuration(mins),
-                    borderRadius: BorderRadius.circular(10),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isCurrent 
-                            ? const Color(0xFF00F0FF).withValues(alpha: 0.1) 
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isCurrent ? const Color(0xFF00F0FF) : Colors.transparent,
-                          width: 1,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: InkWell(
+                      onTap: () => _setPomodoroDuration(mins),
+                      borderRadius: BorderRadius.circular(10),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isCurrent
+                              ? const Color(0xFF00F0FF).withValues(alpha: 0.1)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isCurrent
+                                ? const Color(0xFF00F0FF)
+                                : Colors.transparent,
+                            width: 1,
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        '${mins}m',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: isCurrent ? const Color(0xFF00F0FF) : Colors.white38,
-                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                        child: Text(
+                          '${mins}m',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            color: isCurrent
+                                ? AppColors.accent
+                                : Colors.white38,
+                            fontWeight: isCurrent
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
                         ),
                       ),
                     ),
@@ -476,9 +552,11 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Widget _buildSessionGoalSection(ThemeData theme) {
-    double progress = _sessionWordGoal > 0 ? _sessionWordsWritten / _sessionWordGoal : 0.0;
+    double progress = _sessionWordGoal > 0
+        ? _sessionWordsWritten / _sessionWordGoal
+        : 0.0;
     progress = progress.clamp(0.0, 1.0);
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
@@ -489,21 +567,28 @@ class _EditorScreenState extends State<EditorScreen> {
             children: [
               Text(
                 'META DE SESIÓN',
-                style: GoogleFonts.inter(
+                style: GoogleFonts.outfit(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white38,
+                  color: AppColors.textTertiary,
                   letterSpacing: 1.5,
                 ),
               ),
               Material(
                 color: Colors.transparent,
-                child: InkWell(
-                  onTap: _showSetSessionGoalDialog,
-                  borderRadius: BorderRadius.circular(8),
-                  child: const Padding(
-                    padding: EdgeInsets.all(4.0),
-                    child: Icon(Icons.edit_note_rounded, size: 18, color: Color(0xFF00F0FF)),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: InkWell(
+                    onTap: _showSetSessionGoalDialog,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Icon(
+                        Icons.edit_note_rounded,
+                        size: 18,
+                        color: AppColors.accent,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -515,17 +600,17 @@ class _EditorScreenState extends State<EditorScreen> {
             children: [
               Text(
                 '$_sessionWordsWritten / $_sessionWordGoal palabras',
-                style: GoogleFonts.inter(
+                style: GoogleFonts.outfit(
                   fontSize: 13,
-                  color: Colors.white70,
+                  color: AppColors.textSecondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               Text(
                 '${(progress * 100).toInt()}%',
-                style: GoogleFonts.inter(
+                style: GoogleFonts.outfit(
                   fontSize: 13,
-                  color: const Color(0xFF00F0FF),
+                  color: AppColors.accent,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -545,7 +630,7 @@ class _EditorScreenState extends State<EditorScreen> {
               child: Container(
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF00F0FF), const Color(0xFFAEAEB2)],
+                    colors: [Color(0xFF00F0FF), Color(0xFFAEAEB2)],
                   ),
                   borderRadius: BorderRadius.circular(4),
                   boxShadow: [
@@ -553,7 +638,7 @@ class _EditorScreenState extends State<EditorScreen> {
                       color: const Color(0xFF00F0FF).withValues(alpha: 0.3),
                       blurRadius: 4,
                       spreadRadius: 1,
-                    )
+                    ),
                   ],
                 ),
               ),
@@ -569,14 +654,17 @@ class _EditorScreenState extends State<EditorScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2E),
+        backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          side: BorderSide(color: AppColors.separator),
         ),
         title: Text(
           'Meta de la Sesión',
-          style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold),
+          style: GoogleFonts.outfit(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -584,39 +672,57 @@ class _EditorScreenState extends State<EditorScreen> {
           children: [
             Text(
               '¿Cuántas palabras deseas escribir en esta sesión?',
-              style: GoogleFonts.inter(color: Colors.white70, fontSize: 14),
+              style: GoogleFonts.outfit(
+                color: AppColors.textSecondary,
+                fontSize: 14,
+              ),
             ),
             const SizedBox(height: 18),
             Container(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.02),
+                color: AppColors.bg,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                border: Border.all(color: AppColors.separator),
               ),
               child: TextField(
                 controller: controller,
                 keyboardType: TextInputType.number,
                 autofocus: true,
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 15),
+                style: GoogleFonts.outfit(color: Colors.white, fontSize: 15),
                 decoration: InputDecoration(
                   labelText: 'Meta de palabras',
-                  labelStyle: GoogleFonts.inter(color: Colors.white38, fontSize: 13),
+                  labelStyle: GoogleFonts.outfit(
+                    color: AppColors.textTertiary,
+                    fontSize: 13,
+                  ),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                 ),
               ),
             ),
           ],
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(ctx),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textTertiary,
+              side: BorderSide(
+                color: AppColors.textTertiary.withValues(alpha: 0.3),
+              ),
+            ),
             child: Text(
               'CANCELAR',
-              style: GoogleFonts.inter(color: Colors.white38, fontWeight: FontWeight.w600),
+              style: GoogleFonts.outfit(
+                color: AppColors.textTertiary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-          ElevatedButton(
+          OutlinedButton(
             onPressed: () {
               final val = int.tryParse(controller.text);
               if (val != null && val > 0) {
@@ -626,15 +732,9 @@ class _EditorScreenState extends State<EditorScreen> {
                 Navigator.pop(ctx);
               }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00F0FF),
-              foregroundColor: Colors.black87,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
             child: Text(
               'GUARDAR',
-              style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+              style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -645,39 +745,45 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget _buildNestedHeader() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.separator)),
       ),
       padding: const EdgeInsets.only(left: 8, right: 16),
       height: 48,
       child: Row(
         children: [
           _ToolbarButton(
-            icon: _isCapitulosOpen ? Icons.menu_open_rounded : Icons.menu_rounded,
-            onPressed: () => setState(() => _isCapitulosOpen = !_isCapitulosOpen),
-            tooltip: _isCapitulosOpen ? 'Ocultar capítulos' : 'Mostrar capítulos',
+            icon: _isCapitulosOpen
+                ? Icons.menu_open_rounded
+                : Icons.menu_rounded,
+            onPressed: () =>
+                setState(() => _isCapitulosOpen = !_isCapitulosOpen),
+            tooltip: _isCapitulosOpen
+                ? 'Ocultar capítulos'
+                : 'Mostrar capítulos',
           ),
           const SizedBox(width: 8),
-          buildSaveIndicator(_saveStatus),
-          const _ToolbarDivider(),
           _ToolbarButton(
             icon: Icons.search_rounded,
-            onPressed: () => setState(() => _showFindReplace = !_showFindReplace),
+            onPressed: () =>
+                setState(() => _showFindReplace = !_showFindReplace),
             tooltip: 'Buscar y reemplazar',
           ),
           _ToolbarButton(
             icon: Icons.fullscreen_exit_rounded,
-            onPressed: () => setState(() => _distractionFreeMode = !_distractionFreeMode),
+            onPressed: () =>
+                setState(() => _distractionFreeMode = !_distractionFreeMode),
             tooltip: 'Modo sin distracciones',
           ),
           const SizedBox(width: 4),
           _buildAppBarPomodoroTimer(),
           const Spacer(),
           Container(
-            padding: const EdgeInsets.all(3),
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(10),
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white10),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -757,8 +863,9 @@ class _EditorScreenState extends State<EditorScreen> {
     );
     if (manuscrito != null) {
       _manuscritoId = manuscrito['id'];
-      // Ignorar preferencias de diseño de la BD para usar los estilos premium predefinidos
-      _pageColor = const Color(0xFFFFFFFF);
+      _pageColor = manuscrito['color_fondo'] != null
+          ? _hexToColor(manuscrito['color_fondo'] as String)
+          : const Color(0xFFFFFFFF);
       _fontFamily = 'Merriweather';
       if (manuscrito['font_size'] != null) {
         _fontSize = (manuscrito['font_size'] as num).toDouble();
@@ -782,13 +889,15 @@ class _EditorScreenState extends State<EditorScreen> {
           'contenido': manuscrito['contenido'] ?? '',
           'orden': 0,
         });
-        _capitulos = [{
-          'id': firstCapId,
-          'manuscrito_id': _manuscritoId,
-          'titulo': '',
-          'contenido': manuscrito['contenido'] ?? '',
-          'orden': 0,
-        }];
+        _capitulos = [
+          {
+            'id': firstCapId,
+            'manuscrito_id': _manuscritoId,
+            'titulo': '',
+            'contenido': manuscrito['contenido'] ?? '',
+            'orden': 0,
+          },
+        ];
       } else {
         _capitulos = List<Map<String, dynamic>>.from(caps);
       }
@@ -804,7 +913,8 @@ class _EditorScreenState extends State<EditorScreen> {
         _capitulos[_selectedCapituloIndex]['contenido'] ?? '',
       );
       _isQuillInitialized = true;
-      _titleController.text = _capitulos[_selectedCapituloIndex]['titulo'] ?? '';
+      _titleController.text =
+          _capitulos[_selectedCapituloIndex]['titulo'] ?? '';
 
       _lastSavedText = jsonEncode(_quillController.document.toDelta().toJson());
       _lastSavedTitle = _titleController.text;
@@ -830,13 +940,15 @@ class _EditorScreenState extends State<EditorScreen> {
         'contenido': '',
         'orden': 0,
       });
-      _capitulos = [{
-        'id': firstCapId,
-        'manuscrito_id': _manuscritoId,
-        'titulo': '',
-        'contenido': '',
-        'orden': 0,
-      }];
+      _capitulos = [
+        {
+          'id': firstCapId,
+          'manuscrito_id': _manuscritoId,
+          'titulo': '',
+          'contenido': '',
+          'orden': 0,
+        },
+      ];
 
       _quillController = _initQuillController('');
       _isQuillInitialized = true;
@@ -848,9 +960,13 @@ class _EditorScreenState extends State<EditorScreen> {
       _lastSavedFontSize = _fontSize;
       _lastSavedLineHeight = _lineHeight;
     }
-    _initialWordCountTotal = _capitulos.map((c) => _countWords(_getChapterPlainText(c['contenido'] ?? ''))).fold(0, (a, b) => a + b);
+    _estilos = (await AppDatabase.getEstilos(
+      widget.proyecto['id'],
+    )).map((r) => NovelStyle.fromMap(r)).toList();
+    _initialWordCountTotal = _capitulos
+        .map((c) => _countWords(_getChapterPlainText(c['contenido'] ?? '')))
+        .fold(0, (a, b) => a + b);
     _updateStatsImmediate();
-    // Ahora que el texto ya está cargado, añadimos el listener
     _quillController.addListener(_onTextChanged);
     if (mounted) {
       setState(() {});
@@ -863,7 +979,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final pageColorHex = _colorToHex(_pageColor);
 
     final changes = <String, Object?>{};
-    
+
     // Guardar el contenido y título del capítulo actual
     if (_capitulos.isNotEmpty) {
       final currentCap = _capitulos[_selectedCapituloIndex];
@@ -876,11 +992,11 @@ class _EditorScreenState extends State<EditorScreen> {
         // Actualizar el estado local para reflejar el cambio en el sidebar
         if (mounted) {
           setState(() {
-             _capitulos[_selectedCapituloIndex] = {
-               ...currentCap,
-               'contenido': text,
-               'titulo': title,
-             };
+            _capitulos[_selectedCapituloIndex] = {
+              ...currentCap,
+              'contenido': text,
+              'titulo': title,
+            };
           });
         }
       }
@@ -925,6 +1041,32 @@ class _EditorScreenState extends State<EditorScreen> {
     await AppDatabase.updateProyecto(widget.proyecto);
     if (mounted) {
       setState(() => _saveStatus = SaveStatus.saved);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                Icons.check_circle_rounded,
+                size: 18,
+                color: AppColors.accent,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Guardado',
+                style: GoogleFonts.outfit(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.surface,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: AppColors.separator),
+          ),
+          duration: const Duration(seconds: 2),
+          margin: const EdgeInsets.only(bottom: 20, right: 20),
+        ),
+      );
     }
   }
 
@@ -950,7 +1092,9 @@ class _EditorScreenState extends State<EditorScreen> {
     final nueva = {
       'manuscrito_id': _manuscritoId!,
       'contenido': '',
-      'posicion_cursor': _isQuillInitialized ? _quillController.selection.baseOffset : 0,
+      'posicion_cursor': _isQuillInitialized
+          ? _quillController.selection.baseOffset
+          : 0,
       'color': color,
       'pos_x': startX,
       'pos_y': startY,
@@ -1012,7 +1156,8 @@ class _EditorScreenState extends State<EditorScreen> {
     final confirm = await showConfirmDialog(
       context,
       title: 'Eliminar Tarjeta',
-      message: '¿Estás seguro de eliminar esta tarjeta? La información se perderá permanentemente.',
+      message:
+          '¿Estás seguro de eliminar esta tarjeta? La información se perderá permanentemente.',
       confirmLabel: 'ELIMINAR',
     );
     if (!confirm) return;
@@ -1023,9 +1168,9 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_isQuillInitialized) {
-      return const Scaffold(
-        backgroundColor: const Color(0xFF1C1C1E),
-        body: Center(
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: const Center(
           child: CircularProgressIndicator(
             valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00F0FF)),
           ),
@@ -1039,7 +1184,7 @@ class _EditorScreenState extends State<EditorScreen> {
         if (_isCapitulosOpen && !_distractionFreeMode)
           Container(
             width: 250,
-            color: const Color(0xFF2C2C2E),
+            color: AppColors.surface,
             child: _buildCapitulosSidebar(theme),
           ),
         Expanded(
@@ -1050,7 +1195,7 @@ class _EditorScreenState extends State<EditorScreen> {
         if (_isPanelOpen && !_distractionFreeMode)
           Container(
             width: 270,
-            color: const Color(0xFF3A3A3C),
+            color: AppColors.surface,
             child: _buildPanelLateral(theme),
           ),
       ],
@@ -1069,7 +1214,8 @@ class _EditorScreenState extends State<EditorScreen> {
           if (_showPomodoroCompletionOverlay)
             PomodoroCompletionOverlay(
               durationMinutes: _pomodoroDurationMinutes,
-              onClose: () => setState(() => _showPomodoroCompletionOverlay = false),
+              onClose: () =>
+                  setState(() => _showPomodoroCompletionOverlay = false),
             ),
         ],
       );
@@ -1085,6 +1231,7 @@ class _EditorScreenState extends State<EditorScreen> {
           )
         : Scaffold(
             appBar: AppBar(
+              titleSpacing: 0,
               title: Row(
                 children: [
                   Container(
@@ -1092,46 +1239,48 @@ class _EditorScreenState extends State<EditorScreen> {
                     height: 24,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(3),
-                      color: Colors.white,
+                      color: AppColors.accent,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Text(
                     widget.proyecto['titulo'] ?? 'Mi Novela',
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.outfit(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFFF5F5F7),
+                      color: AppColors.textPrimary,
                     ),
                   ),
                 ],
               ),
               actions: [
                 _buildAppBarPomodoroTimer(),
-                _ToolbarDivider(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Center(child: buildSaveIndicator(_saveStatus)),
-                ),
-                _ToolbarDivider(),
                 _ToolbarButton(
                   icon: Icons.search_rounded,
-                  onPressed: () => setState(() => _showFindReplace = !_showFindReplace),
+                  onPressed: () =>
+                      setState(() => _showFindReplace = !_showFindReplace),
                   tooltip: 'Buscar y reemplazar',
                 ),
                 _ToolbarButton(
                   icon: Icons.fullscreen_exit_rounded,
-                  onPressed: () => setState(() => _distractionFreeMode = !_distractionFreeMode),
+                  onPressed: () => setState(
+                    () => _distractionFreeMode = !_distractionFreeMode,
+                  ),
                   tooltip: 'Modo sin distracciones',
                 ),
                 _ToolbarDivider(),
                 _ToolbarButton(
                   icon: _isCapitulosOpen ? Icons.menu_open : Icons.menu,
-                  onPressed: () => setState(() => _isCapitulosOpen = !_isCapitulosOpen),
-                  tooltip: _isCapitulosOpen ? 'Ocultar capítulos' : 'Mostrar capítulos',
+                  onPressed: () =>
+                      setState(() => _isCapitulosOpen = !_isCapitulosOpen),
+                  tooltip: _isCapitulosOpen
+                      ? 'Ocultar capítulos'
+                      : 'Mostrar capítulos',
                 ),
                 _ToolbarButton(
-                  icon: _isPanelOpen ? Icons.close_fullscreen : Icons.open_in_full,
+                  icon: _isPanelOpen
+                      ? Icons.close_fullscreen
+                      : Icons.open_in_full,
                   onPressed: () => setState(() => _isPanelOpen = !_isPanelOpen),
                   tooltip: _isPanelOpen ? 'Ocultar panel' : 'Mostrar panel',
                 ),
@@ -1148,9 +1297,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 child: Container(
                   height: 40,
                   decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(color: Colors.white.withValues(alpha: 0.04)),
-                    ),
+                    border: Border(top: BorderSide(color: AppColors.separator)),
                   ),
                   child: Row(
                     children: [
@@ -1180,7 +1327,8 @@ class _EditorScreenState extends State<EditorScreen> {
           mainWidget,
           PomodoroCompletionOverlay(
             durationMinutes: _pomodoroDurationMinutes,
-            onClose: () => setState(() => _showPomodoroCompletionOverlay = false),
+            onClose: () =>
+                setState(() => _showPomodoroCompletionOverlay = false),
           ),
         ],
       );
@@ -1193,130 +1341,27 @@ class _EditorScreenState extends State<EditorScreen> {
 
     return Theme(
       data: Theme.of(context).copyWith(
-        platform: TargetPlatform.macOS, // Enables smooth cursor blinking animation
+        platform:
+            TargetPlatform.macOS, // Enables smooth cursor blinking animation
         textSelectionTheme: TextSelectionThemeData(
           cursorColor: isLight ? Colors.black87 : const Color(0xFF00F0FF),
-          selectionColor: isLight ? Colors.blue.withValues(alpha: 0.2) : const Color(0xFF00F0FF).withValues(alpha: 0.25),
-          selectionHandleColor: isLight ? Colors.black87 : const Color(0xFF00F0FF),
+          selectionColor: isLight
+              ? Colors.blue.withValues(alpha: 0.2)
+              : const Color(0xFF00F0FF).withValues(alpha: 0.25),
+          selectionHandleColor: isLight
+              ? Colors.black87
+              : const Color(0xFF00F0FF),
         ),
       ),
       child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-            decoration: const BoxDecoration(
-              color: const Color(0xFF1C1C1E),
-            ),
-            child: Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 820),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3A3A3C),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                    BoxShadow(
-                      color: Colors.white.withValues(alpha: 0.02),
-                      blurRadius: 8,
-                      spreadRadius: -2,
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                child: Row(
-                  children: [
-                    // ── Dropdown de tamaño de fuente ──
-                    Container(
-                      height: 32,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D0E1A),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.white12),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<double>(
-                          value: _kFontSizes.contains(_fontSize) ? _fontSize : 18.0,
-                          dropdownColor: const Color(0xFF3A3A3C),
-                          icon: const Icon(Icons.arrow_drop_down, color: Colors.white54, size: 18),
-                          isDense: true,
-                          style: GoogleFonts.inter(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          items: _kFontSizes.map((val) {
-                            return DropdownMenuItem<double>(
-                              value: val,
-                              child: Text('${val.round()}'),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() {
-                                _fontSize = val;
-                                _fontSizeController.text = val.round().toString();
-                              });
-                              _schedulePrefsSave();
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Separador visual
-                    Container(width: 1, height: 24, color: Colors.white10),
-                    const SizedBox(width: 4),
-                    // ── Barra de formato Quill ──
-                    Expanded(
-                      child: QuillSimpleToolbar(
-                        controller: _quillController,
-                        config: const QuillSimpleToolbarConfig(
-                          showUndo: true,
-                          showRedo: true,
-                          showBoldButton: true,
-                          showItalicButton: true,
-                          showUnderLineButton: true,
-                          showStrikeThrough: false,
-                          showColorButton: true,
-                          showBackgroundColorButton: true,
-                          showClearFormat: true,
-                          showFontFamily: false,
-                          showFontSize: false,
-                          showListNumbers: true,
-                          showListBullets: true,
-                          showListCheck: false,
-                          showCodeBlock: false,
-                          showQuote: true,
-                          showIndent: true,
-                          showLink: false,
-                          showSearchButton: false,
-                          showSubscript: false,
-                          showSuperscript: false,
-                          multiRowsDisplay: false,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
           Expanded(
             child: Stack(
               children: [
                 Positioned.fill(
                   child: Container(
-                    color: const Color(0xFF1C1C1E),
-                    padding: const EdgeInsets.all(36),
+                    color: AppColors.surface,
+                    padding: const EdgeInsets.fromLTRB(36, 36, 36, 0),
                     child: Center(
                       child: GestureDetector(
                         onTap: () {
@@ -1330,7 +1375,6 @@ class _EditorScreenState extends State<EditorScreen> {
                             constraints: const BoxConstraints(maxWidth: 780),
                             decoration: BoxDecoration(
                               color: _pageColor,
-                              borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: Colors.white.withValues(alpha: 0.12),
                                 width: 1.2,
@@ -1351,22 +1395,25 @@ class _EditorScreenState extends State<EditorScreen> {
                             padding: const EdgeInsets.all(4),
                             child: Container(
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: Colors.white.withValues(alpha: 0.05),
                                   width: 1,
                                 ),
                               ),
-                              padding: const EdgeInsets.fromLTRB(48, 44, 48, 44),
+                              padding: const EdgeInsets.fromLTRB(48, 44, 48, 0),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    (widget.proyecto['titulo'] ?? 'Tu novela').toString().toUpperCase(),
-                                    style: GoogleFonts.inter(
+                                    (widget.proyecto['titulo'] ?? 'Tu novela')
+                                        .toString()
+                                        .toUpperCase(),
+                                    style: GoogleFonts.outfit(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
-                                      color: isLight ? Colors.black38 : Colors.white38,
+                                      color: isLight
+                                          ? Colors.black38
+                                          : Colors.white38,
                                       letterSpacing: 2.5,
                                     ),
                                   ),
@@ -1377,12 +1424,16 @@ class _EditorScreenState extends State<EditorScreen> {
                                       _fontFamily,
                                       fontSize: _fontSize + 4,
                                       fontWeight: FontWeight.bold,
-                                      color: isLight ? Colors.black87 : Colors.white,
+                                      color: isLight
+                                          ? Colors.black87
+                                          : Colors.white,
                                       height: 1.2,
                                     ),
                                     showCursor: true,
                                     cursorWidth: 2.5,
-                                    cursorColor: isLight ? Colors.black87 : const Color(0xFF00F0FF),
+                                    cursorColor: isLight
+                                        ? Colors.black87
+                                        : const Color(0xFF00F0FF),
                                     decoration: InputDecoration(
                                       border: InputBorder.none,
                                       enabledBorder: InputBorder.none,
@@ -1394,14 +1445,21 @@ class _EditorScreenState extends State<EditorScreen> {
                                       hintStyle: GoogleFonts.getFont(
                                         _fontFamily,
                                         fontSize: _fontSize + 4,
-                                        color: isLight ? Colors.black12 : Colors.white24,
+                                        fontWeight: FontWeight.bold,
+                                        height: 1.2,
+                                        color: isLight
+                                            ? Colors.black12
+                                            : AppColors.textTertiary,
                                       ),
                                       contentPadding: EdgeInsets.zero,
                                     ),
-                                    onChanged: (_) => _onTextChanged(), // Trigger auto-save
+                                    onChanged: (_) =>
+                                        _onTextChanged(), // Trigger auto-save
                                   ),
                                   Divider(
-                                    color: isLight ? Colors.black12 : Colors.white10,
+                                    color: isLight
+                                        ? Colors.black12
+                                        : Colors.white10,
                                     thickness: 1,
                                   ),
                                   const SizedBox(height: 24),
@@ -1411,7 +1469,8 @@ class _EditorScreenState extends State<EditorScreen> {
                                       focusNode: _editorFocusNode,
                                       config: QuillEditorConfig(
                                         showCursor: true,
-                                        placeholder: 'Comienza a escribir tu historia...',
+                                        placeholder:
+                                            'Comienza a escribir tu historia...',
                                         expands: true,
                                         padding: EdgeInsets.zero,
                                         customStyles: DefaultStyles(
@@ -1423,6 +1482,20 @@ class _EditorScreenState extends State<EditorScreen> {
                                               color: isLight
                                                   ? const Color(0xFF2C2A25)
                                                   : Colors.white70,
+                                            ),
+                                            const HorizontalSpacing(0, 0),
+                                            const VerticalSpacing(0, 0),
+                                            const VerticalSpacing(0, 0),
+                                            null,
+                                          ),
+                                          placeHolder: DefaultTextBlockStyle(
+                                            GoogleFonts.getFont(
+                                              _fontFamily,
+                                              fontSize: _fontSize,
+                                              height: _lineHeight,
+                                              color: isLight
+                                                  ? Colors.black12
+                                                  : AppColors.textTertiary,
                                             ),
                                             const HorizontalSpacing(0, 0),
                                             const VerticalSpacing(0, 0),
@@ -1455,7 +1528,7 @@ class _EditorScreenState extends State<EditorScreen> {
       children: [
         Positioned.fill(
           child: Container(
-            color: const Color(0xFF12131F),
+            color: AppColors.surface,
             child: GridPaper(
               color: const Color(0xFF1E2033),
               interval: 60,
@@ -1466,8 +1539,8 @@ class _EditorScreenState extends State<EditorScreen> {
                       child: Text(
                         'Agrega tarjetas desde el panel derecho\npara organizar ideas, personajes y escenas.',
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.inter(
-                          color: const Color(0xFFAEAEB2),
+                        style: GoogleFonts.outfit(
+                          color: AppColors.textSecondary,
                           fontSize: 14,
                           height: 1.6,
                         ),
@@ -1508,8 +1581,8 @@ class _EditorScreenState extends State<EditorScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
                     'HERRAMIENTAS',
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
+                    style: GoogleFonts.outfit(
+                      color: AppColors.textPrimary,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
@@ -1524,69 +1597,41 @@ class _EditorScreenState extends State<EditorScreen> {
                       Expanded(
                         child: Tooltip(
                           message: 'Agregar nueva nota adhesiva',
-                          child: ElevatedButton.icon(
-                          onPressed: _agregarNota,
-                          icon: const Icon(Icons.sticky_note_2_rounded, size: 14, color: Color(0xFF12131F)),
-                          label: Text(
-                            'NOTA',
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF12131F),
-                              letterSpacing: 0.8,
-                            ),
+                          child: _GlassButton(
+                            icon: Icons.sticky_note_2_rounded,
+                            label: 'NOTA',
+                            onPressed: _agregarNota,
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFFD54F),
-                            foregroundColor: const Color(0xFF12131F),
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                        ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Tooltip(
                           message: 'Agregar nueva tarjeta de idea',
-                          child: ElevatedButton.icon(
-                          onPressed: _agregarTarjeta,
-                          icon: const Icon(Icons.post_add_rounded, size: 14, color: Color(0xFF12131F)),
-                          label: Text(
-                            'TARJETA',
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF12131F),
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFBA68C8),
-                            foregroundColor: const Color(0xFF12131F),
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          child: _GlassButton(
+                            icon: Icons.post_add_rounded,
+                            label: 'TARJETA',
+                            onPressed: _agregarTarjeta,
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
                 const SizedBox(height: 20),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Divider(color: Colors.white10),
+                _buildPageColorSection(),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Divider(color: AppColors.separator),
                 ),
                 const SizedBox(height: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
                     'ENFOQUE & POMODORO',
-                    style: GoogleFonts.inter(
-                      color: Colors.white30,
+                    style: GoogleFonts.outfit(
+                      color: AppColors.textTertiary,
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
@@ -1594,24 +1639,24 @@ class _EditorScreenState extends State<EditorScreen> {
                   ),
                 ),
                 _buildPomodoroSection(theme),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Divider(color: Colors.white10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Divider(color: AppColors.separator),
                 ),
                 const SizedBox(height: 12),
                 _buildSessionGoalSection(theme),
                 const SizedBox(height: 12),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Divider(color: Colors.white10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Divider(color: AppColors.separator),
                 ),
                 const SizedBox(height: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
                     'ESTADÍSTICAS',
-                    style: GoogleFonts.inter(
-                      color: Colors.white30,
+                    style: GoogleFonts.outfit(
+                      color: AppColors.textTertiary,
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
@@ -1621,19 +1666,51 @@ class _EditorScreenState extends State<EditorScreen> {
                 const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    childAspectRatio: 1.6,
-                    children: [
-                      buildMiniStatCard('Palabras', '$_wordCount', Icons.text_fields_rounded, const Color(0xFF3B82F6)),
-                      buildMiniStatCard('Caracteres', '$_charCount', Icons.format_size_rounded, const Color(0xFFA855F7)),
-                      buildMiniStatCard('Notas', '${_notas.length}', Icons.sticky_note_2_rounded, const Color(0xFFFFD54F)),
-                      buildMiniStatCard('Tarjetas', '${_tarjetas.length}', Icons.grid_view_rounded, const Color(0xFFBA68C8)),
-                    ],
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.05),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        _StatItem(
+                          icon: Icons.text_fields_rounded,
+                          label: 'Palabras',
+                          value: '$_wordCount',
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Divider(height: 1, color: Colors.white10),
+                        ),
+                        _StatItem(
+                          icon: Icons.format_size_rounded,
+                          label: 'Caracteres',
+                          value: '$_charCount',
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Divider(height: 1, color: Colors.white10),
+                        ),
+                        _StatItem(
+                          icon: Icons.sticky_note_2_rounded,
+                          label: 'Notas',
+                          value: '${_notas.length}',
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Divider(height: 1, color: Colors.white10),
+                        ),
+                        _StatItem(
+                          icon: Icons.grid_view_rounded,
+                          label: 'Tarjetas',
+                          value: '${_tarjetas.length}',
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -1641,26 +1718,716 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
           ),
         ),
-        const Divider(color: Colors.white10),
+      ],
+    );
+  }
+
+  static const _pageColors = [
+    Color(0xFFFFFFFF), // Blanco
+    Color(0xFFFFF8E0), // Crema
+    Color(0xFFF5E6C8), // Sepia
+    Color(0xFFF0F0F0), // Gris suave
+    Color(0xFFE8F0FE), // Azul claro
+    Color(0xFFE8F5E9), // Verde claro
+    Color(0xFF2C2C2C), // Oscuro
+  ];
+
+  Widget _buildPageColorSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Padding(
-          padding: const EdgeInsets.all(14),
-          child: SizedBox(
-            width: double.infinity,
-            child: Text(
-              'Guardado automático activo',
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                color: Colors.white30,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'COLOR DE HOJA',
+            style: GoogleFonts.outfit(
+              color: AppColors.textTertiary,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
             ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _pageColors.map((color) {
+              final isSelected = _pageColor == color;
+              return GestureDetector(
+                onTap: () => setState(() => _pageColor = color),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isSelected
+                          ? AppColors.accent
+                          : color.computeLuminance() > 0.5
+                          ? Colors.black.withValues(alpha: 0.12)
+                          : Colors.white.withValues(alpha: 0.25),
+                      width: isSelected ? 2 : 1,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: AppColors.accent.withValues(alpha: 0.3),
+                              blurRadius: 8,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: isSelected
+                      ? Icon(
+                          Icons.check_rounded,
+                          size: 16,
+                          color: color.computeLuminance() > 0.5
+                              ? Colors.black87
+                              : Colors.white,
+                        )
+                      : null,
+                ),
+              );
+            }).toList(),
           ),
         ),
       ],
     );
   }
 
+  // --- Estilos ---
+
+  void _applyStyle(int styleId) {
+    final style = _estilos.where((s) => s.id == styleId).firstOrNull;
+    if (style == null) return;
+
+    final config = mergeStyleConfig(style, _estilos);
+    final wrapperOpen = config['wrapperOpen'] as String? ?? '';
+    final wrapperClose = config['wrapperClose'] as String? ?? '';
+    final attr = Attribute<String>(
+      'styleId',
+      AttributeScope.inline,
+      styleId.toString(),
+    );
+
+    if (wrapperOpen.isEmpty && wrapperClose.isEmpty) {
+      _quillController.formatSelection(attr);
+      return;
+    }
+
+    if (!_editorFocusNode.hasFocus) {
+      _editorFocusNode.requestFocus();
+    }
+
+    final sel = _quillController.selection;
+    if (!sel.isValid) return;
+
+    if (!sel.isCollapsed) {
+      final start = sel.start;
+      final end = sel.end;
+      final selectedText = _quillController.document.toPlainText().substring(
+        start,
+        end,
+      );
+      _quillController.replaceText(
+        start,
+        end - start,
+        '$wrapperOpen$selectedText$wrapperClose',
+        null,
+      );
+      _quillController.updateSelection(
+        TextSelection(
+          baseOffset: start,
+          extentOffset:
+              start +
+              wrapperOpen.length +
+              selectedText.length +
+              wrapperClose.length,
+        ),
+        ChangeSource.local,
+      );
+      _quillController.formatSelection(attr);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _quillController.updateSelection(
+            TextSelection.collapsed(
+              offset: start + wrapperOpen.length + selectedText.length,
+            ),
+            ChangeSource.local,
+          );
+        }
+      });
+    } else {
+      final pos = sel.baseOffset;
+      _quillController.replaceText(pos, 0, '$wrapperOpen$wrapperClose', null);
+      _quillController.updateSelection(
+        TextSelection(
+          baseOffset: pos,
+          extentOffset: pos + wrapperOpen.length + wrapperClose.length,
+        ),
+        ChangeSource.local,
+      );
+      _quillController.formatSelection(attr);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _quillController.updateSelection(
+            TextSelection.collapsed(offset: pos + wrapperOpen.length),
+            ChangeSource.local,
+          );
+        }
+      });
+    }
+  }
+
+  Widget _buildEstilosSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${_estilos.length} estilos',
+                style: GoogleFonts.outfit(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white38,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              Material(
+                color: Colors.transparent,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: InkWell(
+                    onTap: _showNuevoEstiloDialog,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(Icons.add, size: 18, color: AppColors.accent),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_estilos.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Crea un nuevo estilo para empezar',
+                style: GoogleFonts.outfit(
+                  fontSize: 11,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            )
+          else
+            ..._estilos.map((estilo) => _buildEstiloRow(estilo)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEstiloRow(NovelStyle estilo) {
+    final config = mergeStyleConfig(estilo, _estilos);
+    final previewText = estilo.nombre;
+    final isGlobal = estilo.esGlobal;
+    final isFork =
+        !isGlobal &&
+        _estilos.any((s) => s.esGlobal && s.nombre == estilo.nombre);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: MouseRegion(
+              cursor: isGlobal
+                  ? SystemMouseCursors.basic
+                  : SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: isGlobal ? null : () => _showEditEstiloDialog(estilo),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          previewText,
+                          style: GoogleFonts.getFont(
+                            config['fontFamily'] as String? ?? _fontFamily,
+                            fontSize:
+                                (config['fontSize'] as num?)?.toDouble().clamp(
+                                  10,
+                                  16,
+                                ) ??
+                                13,
+                            fontWeight: config['fontWeight'] == 'bold'
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            fontStyle: config['fontStyle'] == 'italic'
+                                ? FontStyle.italic
+                                : FontStyle.normal,
+                            color: Colors.white70,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (isGlobal) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.accent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: AppColors.accent.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Text(
+                              'Global',
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 7,
+                                color: AppColors.accent,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (estilo.atajo != null)
+                      Text(
+                        estilo.atajo!,
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 9,
+                          color: Colors.white24,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (isGlobal)
+            Material(
+              color: Colors.transparent,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: InkWell(
+                  onTap: () => _forkEstiloGlobal(estilo),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.call_split,
+                      size: 14,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (isFork)
+            Material(
+              color: Colors.transparent,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: InkWell(
+                  onTap: () => _revertEstiloToGlobal(estilo),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.restore, size: 14, color: Colors.white38),
+                  ),
+                ),
+              ),
+            ),
+          if (!isGlobal) ...[
+            Material(
+              color: Colors.transparent,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: InkWell(
+                  onTap: () => _showEditEstiloDialog(estilo),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.edit, size: 14, color: Colors.white24),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Material(
+              color: Colors.transparent,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: InkWell(
+                  onTap: () => _confirmDeleteEstilo(estilo),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.delete_outline,
+                      size: 14,
+                      color: Colors.white24,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _recargarEstilos() async {
+    final rows = await AppDatabase.getEstilos(widget.proyecto['id']);
+    if (!mounted) return;
+    setState(() {
+      _estilos = rows.map((r) => NovelStyle.fromMap(r)).toList();
+    });
+  }
+
+  Future<void> _forkEstiloGlobal(NovelStyle estilo) async {
+    final newId = await AppDatabase.forkEstiloGlobal(
+      estilo.id!,
+      widget.proyecto['id'],
+    );
+    if (newId <= 0) return;
+    await _recargarEstilos();
+    final forked = _estilos.where((s) => s.id == newId).firstOrNull;
+    if (forked != null) _showEditEstiloDialog(forked);
+  }
+
+  Future<void> _revertEstiloToGlobal(NovelStyle estilo) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'RESTAURAR ESTILO',
+          style: GoogleFonts.outfit(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 1.5,
+          ),
+        ),
+        content: Text(
+          '¿Restaurar "${estilo.nombre}" a su versión global? Se perderán los cambios personalizados.',
+          style: GoogleFonts.outfit(
+            color: AppColors.textSecondary,
+            fontSize: 13,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textTertiary,
+              side: BorderSide(
+                color: AppColors.textTertiary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Text(
+              'Cancelar',
+              style: GoogleFonts.outfit(color: AppColors.textTertiary),
+            ),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.red,
+              side: BorderSide(color: AppColors.red),
+            ),
+            child: Text(
+              'Restaurar',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && estilo.id != null) {
+      await AppDatabase.revertEstiloToGlobal(estilo.id!);
+      await _recargarEstilos();
+    }
+  }
+
+  Future<void> _showNuevoEstiloDialog() async {
+    final nombreCtrl = TextEditingController();
+    final atajoCtrl = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'NUEVO ESTILO',
+          style: GoogleFonts.outfit(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 1.5,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nombreCtrl,
+              autofocus: true,
+              style: GoogleFonts.outfit(color: Colors.white, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Nombre del estilo',
+                hintStyle: GoogleFonts.outfit(
+                  color: Colors.white38,
+                  fontSize: 14,
+                ),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.02),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.accent),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            AtajoRecorder(controller: atajoCtrl, hint: 'Atajo (ej. Ctrl+6)'),
+          ],
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textTertiary,
+              side: BorderSide(
+                color: AppColors.textTertiary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Text(
+              'Cancelar',
+              style: GoogleFonts.outfit(color: Colors.white54),
+            ),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Crear',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && nombreCtrl.text.trim().isNotEmpty) {
+      await AppDatabase.insertEstilo({
+        'proyecto_id': widget.proyecto['id'],
+        'nombre': nombreCtrl.text.trim(),
+        'orden': _estilos.length,
+        'atajo': atajoCtrl.text.trim().isNotEmpty
+            ? atajoCtrl.text.trim()
+            : null,
+      });
+      await _recargarEstilos();
+    }
+  }
+
+  Future<void> _showEditEstiloDialog(NovelStyle estilo) async {
+    final nombreCtrl = TextEditingController(text: estilo.nombre);
+    final atajoCtrl = TextEditingController(text: estilo.atajo ?? '');
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'EDITAR ESTILO',
+          style: GoogleFonts.outfit(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 1.5,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nombreCtrl,
+              autofocus: true,
+              style: GoogleFonts.outfit(color: Colors.white, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Nombre del estilo',
+                hintStyle: GoogleFonts.outfit(
+                  color: Colors.white38,
+                  fontSize: 14,
+                ),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.02),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.accent),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            AtajoRecorder(controller: atajoCtrl, hint: 'Atajo (ej. Ctrl+6)'),
+          ],
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textTertiary,
+              side: BorderSide(
+                color: AppColors.textTertiary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Text(
+              'Cancelar',
+              style: GoogleFonts.outfit(color: Colors.white54),
+            ),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Guardar',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true &&
+        nombreCtrl.text.trim().isNotEmpty &&
+        estilo.id != null) {
+      await AppDatabase.updateEstilo(estilo.id!, {
+        'nombre': nombreCtrl.text.trim(),
+        'atajo': atajoCtrl.text.trim().isNotEmpty
+            ? atajoCtrl.text.trim()
+            : null,
+      });
+      await _recargarEstilos();
+    }
+  }
+
+  Future<void> _confirmDeleteEstilo(NovelStyle estilo) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text(
+          'ELIMINAR ESTILO',
+          style: GoogleFonts.outfit(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 1.5,
+          ),
+        ),
+        content: Text(
+          '¿Eliminar "${estilo.nombre}"? Los textos que usen este estilo mantendrán el formato actual.',
+          style: GoogleFonts.outfit(
+            color: AppColors.textSecondary,
+            fontSize: 13,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textTertiary,
+              side: BorderSide(
+                color: AppColors.textTertiary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Text(
+              'Cancelar',
+              style: GoogleFonts.outfit(color: AppColors.textTertiary),
+            ),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.red,
+              side: BorderSide(color: AppColors.red),
+            ),
+            child: Text(
+              'Eliminar',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && estilo.id != null) {
+      await AppDatabase.deleteEstilo(estilo.id!);
+      await _recargarEstilos();
+    }
+  }
 
   // --- Capítulos UI ---
   Widget _buildCapitulosSidebar(ThemeData theme) {
@@ -1672,26 +2439,61 @@ class _EditorScreenState extends State<EditorScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Índice', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(
+                'ÍNDICE',
+                style: GoogleFonts.outfit(
+                  color: AppColors.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                ),
+              ),
               PopupMenuButton<String>(
-                icon: const Icon(Icons.add, color: Color(0xFF00F0FF), size: 20),
+                icon: Icon(Icons.add, color: AppColors.accent, size: 20),
                 tooltip: 'Nuevo...',
                 onSelected: (tipo) => _agregarCapitulo(tipo: tipo),
-                color: const Color(0xFF3A3A3C),
+                color: AppColors.card,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: Colors.white10),
+                  side: BorderSide(color: AppColors.separator),
                 ),
                 itemBuilder: (ctx) => [
-                  PopupMenuItem(value: 'prologo', child: Text('Prólogo', style: GoogleFonts.inter(color: Colors.white, fontSize: 13))),
-                  PopupMenuItem(value: 'capitulo', child: Text('Capítulo estándar', style: GoogleFonts.inter(color: Colors.white, fontSize: 13))),
-                  PopupMenuItem(value: 'epilogo', child: Text('Epílogo', style: GoogleFonts.inter(color: Colors.white, fontSize: 13))),
+                  PopupMenuItem(
+                    value: 'prologo',
+                    child: Text(
+                      'Prólogo',
+                      style: GoogleFonts.outfit(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'capitulo',
+                    child: Text(
+                      'Capítulo estándar',
+                      style: GoogleFonts.outfit(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'epilogo',
+                    child: Text(
+                      'Epílogo',
+                      style: GoogleFonts.outfit(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ],
           ),
         ),
-        const Divider(color: Colors.white10),
+        Divider(color: AppColors.separator),
         const SizedBox(height: 8),
         Expanded(
           child: ReorderableListView.builder(
@@ -1705,13 +2507,15 @@ class _EditorScreenState extends State<EditorScreen> {
                 }
                 final item = _capitulos.removeAt(oldIndex);
                 _capitulos.insert(newIndex, item);
-                
+
                 // Si el capítulo seleccionado se movió, actualizar el índice
                 if (_selectedCapituloIndex == oldIndex) {
                   _selectedCapituloIndex = newIndex;
-                } else if (_selectedCapituloIndex > oldIndex && _selectedCapituloIndex <= newIndex) {
+                } else if (_selectedCapituloIndex > oldIndex &&
+                    _selectedCapituloIndex <= newIndex) {
                   _selectedCapituloIndex--;
-                } else if (_selectedCapituloIndex < oldIndex && _selectedCapituloIndex >= newIndex) {
+                } else if (_selectedCapituloIndex < oldIndex &&
+                    _selectedCapituloIndex >= newIndex) {
                   _selectedCapituloIndex++;
                 }
               });
@@ -1721,7 +2525,7 @@ class _EditorScreenState extends State<EditorScreen> {
               final cap = _capitulos[index];
               final isSelected = index == _selectedCapituloIndex;
               final customTitle = cap['titulo']?.toString().trim() ?? '';
-              
+
               // Calcular numeración solo para capítulos estándar
               String label = 'Capítulo';
               final tipo = cap['tipo'] ?? 'capitulo';
@@ -1790,7 +2594,7 @@ class _EditorScreenState extends State<EditorScreen> {
       'orden': newOrder,
       'tipo': tipo,
     });
-    
+
     final newCap = {
       'id': id,
       'manuscrito_id': _manuscritoId,
@@ -1799,7 +2603,7 @@ class _EditorScreenState extends State<EditorScreen> {
       'orden': newOrder,
       'tipo': tipo,
     };
-    
+
     setState(() {
       _capitulos.add(newCap);
       _selectedCapituloIndex = _capitulos.length - 1;
@@ -1822,13 +2626,50 @@ class _EditorScreenState extends State<EditorScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF3A3A3C),
-        title: Text('Eliminar Capítulo', style: GoogleFonts.inter(color: Colors.redAccent)),
-        content: Text('¿Estás seguro de eliminar "${cap['titulo']}"? Todo el contenido se perderá.',
-            style: const TextStyle(color: Colors.white70)),
+        backgroundColor: AppColors.card,
+        title: Text(
+          'Eliminar Capítulo',
+          style: GoogleFonts.outfit(color: AppColors.red),
+        ),
+        content: Text(
+          '¿Estás seguro de eliminar "${cap['titulo']}"? Todo el contenido se perderá.',
+          style: GoogleFonts.outfit(
+            color: AppColors.textSecondary,
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('ELIMINAR', style: TextStyle(color: Colors.redAccent))),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textTertiary,
+              side: BorderSide(
+                color: AppColors.textTertiary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Text(
+              'CANCELAR',
+              style: GoogleFonts.outfit(
+                color: AppColors.textTertiary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.red,
+              side: BorderSide(color: AppColors.red),
+            ),
+            child: Text(
+              'ELIMINAR',
+              style: GoogleFonts.outfit(
+                color: AppColors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1842,7 +2683,9 @@ class _EditorScreenState extends State<EditorScreen> {
         } else if (index < _selectedCapituloIndex) {
           _selectedCapituloIndex--;
         }
-        _cambiarCapitulo(_selectedCapituloIndex); // Recargar el contenido del que quedó
+        _cambiarCapitulo(
+          _selectedCapituloIndex,
+        ); // Recargar el contenido del que quedó
       });
     }
   }
@@ -1862,8 +2705,8 @@ class _EditorScreenState extends State<EditorScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       height: 44,
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.04))),
+        color: AppColors.bg,
+        border: Border(bottom: BorderSide(color: AppColors.separator)),
       ),
       child: Row(
         children: [
@@ -1878,8 +2721,8 @@ class _EditorScreenState extends State<EditorScreen> {
           const SizedBox(width: 10),
           Text(
             (widget.proyecto['titulo'] ?? 'Mi Novela').toString(),
-            style: GoogleFonts.inter(
-              color: Colors.white.withValues(alpha: 0.5),
+            style: GoogleFonts.outfit(
+              color: AppColors.textSecondary,
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -1887,13 +2730,15 @@ class _EditorScreenState extends State<EditorScreen> {
           const Spacer(),
           _ToolbarButton(
             icon: Icons.search_rounded,
-            onPressed: () => setState(() => _showFindReplace = !_showFindReplace),
+            onPressed: () =>
+                setState(() => _showFindReplace = !_showFindReplace),
             tooltip: 'Buscar y reemplazar',
           ),
           const SizedBox(width: 4),
           _ToolbarButton(
             icon: Icons.fullscreen_rounded,
-            onPressed: () => setState(() => _distractionFreeMode = !_distractionFreeMode),
+            onPressed: () =>
+                setState(() => _distractionFreeMode = !_distractionFreeMode),
             tooltip: 'Salir del modo sin distracciones',
           ),
         ],
@@ -1905,8 +2750,8 @@ class _EditorScreenState extends State<EditorScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+        color: AppColors.card,
+        border: Border(top: BorderSide(color: AppColors.separator)),
       ),
       child: Row(
         children: [
@@ -1914,20 +2759,31 @@ class _EditorScreenState extends State<EditorScreen> {
             child: Container(
               height: 36,
               decoration: BoxDecoration(
-                color: const Color(0xFF3A3A3C),
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.white12),
               ),
               child: TextField(
                 controller: _findController,
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                style: GoogleFonts.outfit(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Buscar...',
-                  hintStyle: GoogleFonts.inter(color: Colors.white24, fontSize: 13),
-                  prefixIcon: const Icon(Icons.search_rounded, size: 16, color: Colors.white38),
+                  hintStyle: GoogleFonts.outfit(
+                    color: Colors.white24,
+                    fontSize: 13,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    size: 16,
+                    color: Colors.white38,
+                  ),
                   suffixIcon: _findController.text.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 16, color: Colors.white38),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            size: 16,
+                            color: Colors.white38,
+                          ),
                           onPressed: () {
                             _findController.clear();
                             _findMatches = [];
@@ -1945,11 +2801,16 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
           const SizedBox(width: 8),
           IconButton(
-            icon: const Icon(Icons.chevron_left_rounded, size: 20, color: Colors.white54),
+            icon: const Icon(
+              Icons.chevron_left_rounded,
+              size: 20,
+              color: Colors.white54,
+            ),
             onPressed: _highlightedMatchIndex != null && _findMatches.isNotEmpty
                 ? () {
                     setState(() {
-                      _highlightedMatchIndex = (_highlightedMatchIndex! - 1).clamp(0, _findMatches.length - 1);
+                      _highlightedMatchIndex = (_highlightedMatchIndex! - 1)
+                          .clamp(0, _findMatches.length - 1);
                       _applyFindSelection();
                     });
                   }
@@ -1957,15 +2818,25 @@ class _EditorScreenState extends State<EditorScreen> {
             tooltip: 'Anterior',
           ),
           Text(
-            _findMatches.isNotEmpty ? '${(_highlightedMatchIndex ?? 0) + 1}/${_findMatches.length}' : '0/0',
-            style: GoogleFonts.jetBrainsMono(fontSize: 11, color: Colors.white38),
+            _findMatches.isNotEmpty
+                ? '${(_highlightedMatchIndex ?? 0) + 1}/${_findMatches.length}'
+                : '0/0',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 11,
+              color: Colors.white38,
+            ),
           ),
           IconButton(
-            icon: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.white54),
+            icon: const Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: Colors.white54,
+            ),
             onPressed: _highlightedMatchIndex != null && _findMatches.isNotEmpty
                 ? () {
                     setState(() {
-                      _highlightedMatchIndex = (_highlightedMatchIndex! + 1).clamp(0, _findMatches.length - 1);
+                      _highlightedMatchIndex = (_highlightedMatchIndex! + 1)
+                          .clamp(0, _findMatches.length - 1);
                       _applyFindSelection();
                     });
                   }
@@ -1979,42 +2850,52 @@ class _EditorScreenState extends State<EditorScreen> {
             height: 36,
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF3A3A3C),
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.white12),
               ),
               child: TextField(
                 controller: _replaceController,
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                style: GoogleFonts.outfit(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Reemplazar con...',
-                  hintStyle: GoogleFonts.inter(color: Colors.white24, fontSize: 13),
+                  hintStyle: GoogleFonts.outfit(
+                    color: Colors.white24,
+                    fontSize: 13,
+                  ),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
               ),
             ),
           ),
           const SizedBox(width: 8),
-          TextButton(
+          OutlinedButton(
             onPressed: _replaceCurrent,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF00F0FF),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            child: Text(
+              'REEMPLAZAR',
+              style: GoogleFonts.outfit(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            child: Text('REEMPLAZAR', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold)),
           ),
-          TextButton(
+          OutlinedButton(
             onPressed: _replaceAll,
-            style: TextButton.styleFrom(
+            style: OutlinedButton.styleFrom(
               foregroundColor: Colors.orangeAccent,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              side: BorderSide(color: Colors.orangeAccent),
             ),
-            child: Text('TODO', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold)),
+            child: Text(
+              'TODO',
+              style: GoogleFonts.outfit(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -2062,12 +2943,18 @@ class _EditorScreenState extends State<EditorScreen> {
     final query = _findController.text;
     final replacement = _replaceController.text;
     if (query.isEmpty) return;
-    if (_replaceText(query, replacement, _findMatches[_highlightedMatchIndex!].baseOffset)) {
+    if (_replaceText(
+      query,
+      replacement,
+      _findMatches[_highlightedMatchIndex!].baseOffset,
+    )) {
       final newMatches = List<TextSelection>.from(_findMatches);
       newMatches.removeAt(_highlightedMatchIndex!);
       setState(() {
         _findMatches = newMatches;
-        _highlightedMatchIndex = newMatches.isNotEmpty ? _highlightedMatchIndex!.clamp(0, newMatches.length - 1) : null;
+        _highlightedMatchIndex = newMatches.isNotEmpty
+            ? _highlightedMatchIndex!.clamp(0, newMatches.length - 1)
+            : null;
       });
       if (_highlightedMatchIndex != null) {
         _applyFindSelection();
@@ -2111,7 +2998,7 @@ class _EditorScreenState extends State<EditorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('$count reemplazos realizados.'),
-          backgroundColor: const Color(0xFF00F0FF),
+          backgroundColor: AppColors.accent,
           duration: const Duration(seconds: 2),
         ),
       );
@@ -2120,6 +3007,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_kbdHandler);
     _autoSaveTimer?.cancel();
     _statsTimer?.cancel();
     _prefsSaveTimer?.cancel();
@@ -2129,21 +3017,25 @@ class _EditorScreenState extends State<EditorScreen> {
     }
     // Guardado best-effort sin setState (widget ya desmontado)
     if (_manuscritoId != null) {
-      final text = _isQuillInitialized ? jsonEncode(_quillController.document.toDelta().toJson()) : '';
+      final text = _isQuillInitialized
+          ? jsonEncode(_quillController.document.toDelta().toJson())
+          : '';
       final pageColorHex = _colorToHex(_pageColor);
 
       final changes = <String, Object?>{};
-      
+
       // Guardar el contenido del capítulo actual (best-effort al salir)
-      if (_capitulos.isNotEmpty && (text != _lastSavedText || _titleController.text != _lastSavedTitle)) {
+      if (_capitulos.isNotEmpty &&
+          (text != _lastSavedText ||
+              _titleController.text != _lastSavedTitle)) {
         final currentCap = _capitulos[_selectedCapituloIndex];
         AppDatabase.database.then((db) {
           db.update(
             'capitulos',
             {
-              'contenido': text, 
+              'contenido': text,
               'titulo': _titleController.text,
-              'actualizado_en': DateTime.now().toIso8601String()
+              'actualizado_en': DateTime.now().toIso8601String(),
             },
             where: 'id = ?',
             whereArgs: [currentCap['id']],
@@ -2208,7 +3100,6 @@ class _CapituloSidebarItemState extends State<_CapituloSidebarItem> {
 
   @override
   Widget build(BuildContext context) {
-    const gold = Colors.white;
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -2225,28 +3116,28 @@ class _CapituloSidebarItemState extends State<_CapituloSidebarItem> {
             gradient: widget.isSelected
                 ? LinearGradient(
                     colors: [
-                      gold.withValues(alpha: 0.15),
-                      gold.withValues(alpha: 0.02),
+                      AppColors.accent.withValues(alpha: 0.15),
+                      AppColors.accent.withValues(alpha: 0.02),
                     ],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   )
                 : _isHovered
-                    ? LinearGradient(
-                        colors: [
-                          Colors.white.withValues(alpha: 0.04),
-                          Colors.transparent,
-                        ],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      )
-                    : null,
+                ? LinearGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: 0.04),
+                      Colors.transparent,
+                    ],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  )
+                : null,
             border: Border.all(
               color: widget.isSelected
-                  ? gold.withValues(alpha: 0.25)
+                  ? AppColors.accent.withValues(alpha: 0.25)
                   : _isHovered
-                      ? Colors.white.withValues(alpha: 0.06)
-                      : Colors.transparent,
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.transparent,
               width: 1,
             ),
           ),
@@ -2258,11 +3149,11 @@ class _CapituloSidebarItemState extends State<_CapituloSidebarItem> {
                 height: widget.isSelected ? 16 : 0,
                 margin: EdgeInsets.only(right: widget.isSelected ? 8 : 0),
                 decoration: BoxDecoration(
-                  color: gold,
+                  color: AppColors.accent,
                   borderRadius: BorderRadius.circular(1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: gold.withValues(alpha: 0.5),
+                      color: AppColors.accent.withValues(alpha: 0.5),
                       blurRadius: 4,
                     ),
                   ],
@@ -2275,26 +3166,30 @@ class _CapituloSidebarItemState extends State<_CapituloSidebarItem> {
                   children: [
                     Text(
                       widget.label,
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.outfit(
                         color: widget.isSelected
-                            ? gold
+                            ? AppColors.accent
                             : _isHovered
-                                ? Colors.white54
-                                : Colors.white30,
+                            ? AppColors.textSecondary
+                            : AppColors.textTertiary,
                         fontSize: 11,
-                        fontWeight: widget.isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: widget.isSelected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                       ),
                     ),
                     if (widget.title.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
                         widget.title,
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.outfit(
                           color: widget.isSelected
-                              ? Colors.white
-                              : Colors.white70,
+                              ? AppColors.textPrimary
+                              : AppColors.textSecondary,
                           fontSize: 13,
-                          fontWeight: widget.isSelected ? FontWeight.w500 : FontWeight.normal,
+                          fontWeight: widget.isSelected
+                              ? FontWeight.w500
+                              : FontWeight.normal,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -2305,7 +3200,11 @@ class _CapituloSidebarItemState extends State<_CapituloSidebarItem> {
               ),
               if (widget.onDelete != null)
                 IconButton(
-                  icon: const Icon(Icons.delete_rounded, size: 14, color: Colors.white30),
+                  icon: Icon(
+                    Icons.delete_rounded,
+                    size: 14,
+                    color: AppColors.textTertiary,
+                  ),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: widget.onDelete,
@@ -2330,7 +3229,7 @@ class _ToolbarDivider extends StatelessWidget {
       width: 1,
       height: 20,
       margin: const EdgeInsets.symmetric(horizontal: 4),
-      color: Colors.white.withValues(alpha: 0.06),
+      color: AppColors.separator,
     );
   }
 }
@@ -2349,7 +3248,7 @@ class _ToolbarButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: Icon(icon, size: 18),
+      icon: Icon(icon, size: 18, color: AppColors.textSecondary),
       onPressed: onPressed,
       tooltip: tooltip,
       padding: EdgeInsets.zero,
@@ -2372,23 +3271,29 @@ class _NestedModeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      decoration: BoxDecoration(
-        color: isActive ? Colors.white : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: InkWell(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: isActive
+                ? AppColors.accent.withValues(alpha: 0.08)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isActive ? AppColors.accent : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
           child: Text(
             label,
-            style: GoogleFonts.inter(
+            style: GoogleFonts.outfit(
               fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isActive ? const Color(0xFF1C1C1E) : const Color(0xFF6B6B8A),
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              color: isActive ? AppColors.accent : Colors.white54,
             ),
           ),
         ),
@@ -2413,33 +3318,91 @@ class _ModeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: isActive ? Colors.white : Colors.transparent,
-                width: 2,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: isActive ? AppColors.accent : Colors.transparent,
+                  width: 2,
+                ),
               ),
             ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: isActive ? AppColors.accent : AppColors.textSecondary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: GoogleFonts.outfit(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isActive
+                        ? AppColors.accent
+                        : AppColors.textSecondary,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  const _GlassButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onPressed,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.separator),
+            color: Colors.white.withValues(alpha: 0.04),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 10,
+                offset: const Offset(2, 4),
+              ),
+            ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 16,
-                color: isActive ? Colors.white : const Color(0xFF6B6B8A),
-              ),
+              Icon(icon, size: 14, color: AppColors.accent),
               const SizedBox(width: 6),
               Text(
                 label,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isActive ? Colors.white : const Color(0xFF6B6B8A),
-                  letterSpacing: 0.5,
+                style: GoogleFonts.outfit(
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                  color: AppColors.accent.withValues(alpha: 0.8),
                 ),
               ),
             ],
@@ -2450,3 +3413,58 @@ class _ModeTab extends StatelessWidget {
   }
 }
 
+class _StatItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _StatItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: AppColors.accent.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 16, color: AppColors.accent),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: GoogleFonts.outfit(
+                  fontSize: 9,
+                  color: AppColors.textTertiary,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: GoogleFonts.outfit(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

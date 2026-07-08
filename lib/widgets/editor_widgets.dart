@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../shared/app_theme.dart';
 
 // ── Pomodoro Timer Widget ─────────────────────────────
 class PomodoroSection extends StatelessWidget {
@@ -34,7 +35,7 @@ class PomodoroSection extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E).withValues(alpha: 0.6),
+        color: AppColors.card.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
@@ -52,7 +53,7 @@ class PomodoroSection extends StatelessWidget {
                     strokeWidth: 6,
                     backgroundColor: Colors.white.withValues(alpha: 0.03),
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      isRunning ? const Color(0xFF00F0FF) : const Color(0xFFAEAEB2),
+                      isRunning ? AppColors.accent : const Color(0xFFAEAEB2),
                     ),
                   ),
                 ),
@@ -65,7 +66,7 @@ class PomodoroSection extends StatelessWidget {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF00F0FF).withValues(alpha: 0.1),
+                            color: AppColors.accent.withValues(alpha: 0.1),
                             blurRadius: 16,
                             spreadRadius: 2,
                           ),
@@ -87,10 +88,10 @@ class PomodoroSection extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       isRunning ? 'ENFOQUE' : 'PAUSA',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.outfit(
                         fontSize: 9,
                         fontWeight: FontWeight.bold,
-                        color: isRunning ? const Color(0xFF00F0FF) : Colors.white24,
+                        color: isRunning ? AppColors.accent : Colors.white24,
                         letterSpacing: 1.5,
                       ),
                     ),
@@ -105,25 +106,28 @@ class PomodoroSection extends StatelessWidget {
             children: [
               Material(
                 color: Colors.transparent,
-                child: InkWell(
-                  onTap: isRunning ? onPause : onStart,
-                  borderRadius: BorderRadius.circular(50),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isRunning
-                          ? const Color(0xFF00F0FF).withValues(alpha: 0.1)
-                          : Colors.white.withValues(alpha: 0.05),
-                      border: Border.all(
-                        color: isRunning ? const Color(0xFF00F0FF) : Colors.white24,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: InkWell(
+                    onTap: isRunning ? onPause : onStart,
+                    borderRadius: BorderRadius.circular(50),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isRunning
+                            ? AppColors.accent.withValues(alpha: 0.1)
+                            : Colors.white.withValues(alpha: 0.05),
+                        border: Border.all(
+                          color: isRunning ? AppColors.accent : Colors.white24,
+                        ),
                       ),
-                    ),
-                    child: Icon(
-                      isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      color: isRunning ? const Color(0xFF00F0FF) : Colors.white70,
-                      size: 20,
+                      child: Icon(
+                        isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        color: isRunning ? AppColors.accent : Colors.white70,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
@@ -131,20 +135,23 @@ class PomodoroSection extends StatelessWidget {
               const SizedBox(width: 16),
               Material(
                 color: Colors.transparent,
-                child: InkWell(
-                  onTap: onReset,
-                  borderRadius: BorderRadius.circular(50),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.02),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                    ),
-                    child: const Icon(
-                      Icons.replay_rounded,
-                      color: Colors.white38,
-                      size: 20,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: InkWell(
+                    onTap: onReset,
+                    borderRadius: BorderRadius.circular(50),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.02),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                      ),
+                      child: const Icon(
+                        Icons.replay_rounded,
+                        color: Colors.white38,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
@@ -159,29 +166,32 @@ class PomodoroSection extends StatelessWidget {
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: InkWell(
-                    onTap: () => onSetDuration(mins),
-                    borderRadius: BorderRadius.circular(10),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isCurrent
-                            ? const Color(0xFF00F0FF).withValues(alpha: 0.1)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isCurrent ? const Color(0xFF00F0FF) : Colors.transparent,
-                          width: 1,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: InkWell(
+                      onTap: () => onSetDuration(mins),
+                      borderRadius: BorderRadius.circular(10),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isCurrent
+                              ? AppColors.accent.withValues(alpha: 0.1)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isCurrent ? AppColors.accent : Colors.transparent,
+                            width: 1,
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        '${mins}m',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: isCurrent ? const Color(0xFF00F0FF) : Colors.white38,
-                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                        child: Text(
+                          '${mins}m',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            color: isCurrent ? AppColors.accent : Colors.white38,
+                            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                          ),
                         ),
                       ),
                     ),
@@ -225,14 +235,14 @@ class AppBarPomodoroTimer extends StatelessWidget {
           margin: const EdgeInsets.only(right: 12),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
-            color: isRunning ? const Color(0xFF00F0FF).withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
+            color: isRunning ? AppColors.accent.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: isRunning ? const Color(0xFF00F0FF) : Colors.white24,
+              color: isRunning ? AppColors.accent : Colors.white24,
               width: 1,
             ),
             boxShadow: isRunning
-                ? [BoxShadow(color: const Color(0xFF00F0FF).withValues(alpha: 0.15), blurRadius: 8)]
+                ? [BoxShadow(color: AppColors.accent.withValues(alpha: 0.15), blurRadius: 8)]
                 : null,
           ),
           child: Row(
@@ -241,7 +251,7 @@ class AppBarPomodoroTimer extends StatelessWidget {
               Icon(
                 Icons.hourglass_bottom_rounded,
                 size: 14,
-                color: isRunning ? const Color(0xFF00F0FF) : Colors.white30,
+                color: isRunning ? AppColors.accent : Colors.white30,
               ),
               const SizedBox(width: 6),
               Text(
@@ -249,7 +259,7 @@ class AppBarPomodoroTimer extends StatelessWidget {
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: isRunning ? const Color(0xFF00F0FF) : Colors.white70,
+                  color: isRunning ? AppColors.accent : Colors.white70,
                 ),
               ),
             ],
@@ -288,7 +298,7 @@ class SessionGoalSection extends StatelessWidget {
             children: [
               Text(
                 'META DE SESIÓN',
-                style: GoogleFonts.inter(
+                style: GoogleFonts.outfit(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                   color: Colors.white38,
@@ -297,18 +307,21 @@ class SessionGoalSection extends StatelessWidget {
               ),
               Material(
                 color: Colors.transparent,
-                child: InkWell(
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: InkWell(
                   onTap: onEdit,
                   borderRadius: BorderRadius.circular(8),
                   child: Tooltip(
                     message: 'Editar meta de palabras',
                     child: Padding(
                       padding: const EdgeInsets.all(4.0),
-                      child: Icon(Icons.edit_note_rounded, size: 18, color: const Color(0xFF00F0FF)),
+                      child: Icon(Icons.edit_note_rounded, size: 18, color: AppColors.accent),
                     ),
                   ),
                 ),
               ),
+            ),
             ],
           ),
           const SizedBox(height: 8),
@@ -317,11 +330,11 @@ class SessionGoalSection extends StatelessWidget {
             children: [
               Text(
                 '$sessionWordsWritten / $sessionWordGoal palabras',
-                style: GoogleFonts.inter(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w500),
+                style: GoogleFonts.outfit(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w500),
               ),
               Text(
                 '${(progress * 100).toInt()}%',
-                style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF00F0FF), fontWeight: FontWeight.bold),
+                style: GoogleFonts.outfit(fontSize: 13, color: AppColors.accent, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -338,13 +351,13 @@ class SessionGoalSection extends StatelessWidget {
               widthFactor: progress,
               child: Container(
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF00F0FF), const Color(0xFFAEAEB2)],
+                  gradient: LinearGradient(
+                    colors: [AppColors.accent, const Color(0xFFAEAEB2)],
                   ),
                   borderRadius: BorderRadius.circular(4),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF00F0FF).withValues(alpha: 0.3),
+                      color: AppColors.accent.withValues(alpha: 0.3),
                       blurRadius: 4,
                       spreadRadius: 1,
                     ),
@@ -364,23 +377,46 @@ Widget buildMiniStatCard(String label, String value, IconData icon, Color color)
   return Container(
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: const Color(0xFF3A3A3C),
+      color: color.withValues(alpha: 0.06),
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.03), width: 1),
+      border: Border.all(color: color.withValues(alpha: 0.15), width: 1),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(icon, size: 14, color: color),
-            Text(value, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(icon, size: 13, color: color),
+            ),
+            Text(
+              value,
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: -0.3,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 6),
-        Text(label.toUpperCase(), style: GoogleFonts.inter(fontSize: 9, color: const Color(0xFFAEAEB2), fontWeight: FontWeight.w500, letterSpacing: 0.8)),
+        Text(
+          label.toUpperCase(),
+          style: GoogleFonts.outfit(
+            fontSize: 9,
+            color: Colors.white54,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.8,
+          ),
+        ),
       ],
     ),
   );
@@ -399,7 +435,7 @@ Widget buildSaveIndicator(SaveStatus status) {
             child: const Icon(Icons.check_circle_outline, size: 14, color: Color(0xFF4ADE80)),
           ),
           const SizedBox(width: 4),
-          Text('Guardado', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF4ADE80))),
+          Text('Guardado', style: GoogleFonts.outfit(fontSize: 12, color: const Color(0xFF4ADE80))),
         ],
       );
     case SaveStatus.saving:
@@ -410,7 +446,7 @@ Widget buildSaveIndicator(SaveStatus status) {
             child: const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
           ),
           const SizedBox(width: 6),
-          Text('Guardando...', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF00F0FF))),
+          Text('Guardando...', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.accent)),
         ],
       );
     case SaveStatus.unsaved:
@@ -421,7 +457,7 @@ Widget buildSaveIndicator(SaveStatus status) {
             child: const Icon(Icons.circle, size: 8, color: Color(0xFFFB923C)),
           ),
           const SizedBox(width: 6),
-          Text('Sin guardar', style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFFB923C))),
+          Text('Sin guardar', style: GoogleFonts.outfit(fontSize: 12, color: const Color(0xFFFB923C))),
         ],
       );
   }
@@ -449,12 +485,12 @@ class PomodoroCompletionOverlay extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 480),
             padding: const EdgeInsets.all(40),
             decoration: BoxDecoration(
-              color: const Color(0xFF2C2C2E),
+              color: AppColors.card,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFF00F0FF), width: 1.5),
+              border: Border.all(color: AppColors.accent, width: 1.5),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF00F0FF).withValues(alpha: 0.2),
+                  color: AppColors.accent.withValues(alpha: 0.2),
                   blurRadius: 40,
                   spreadRadius: 2,
                 ),
@@ -467,46 +503,38 @@ class PomodoroCompletionOverlay extends StatelessWidget {
                   width: 84, height: 84,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF00F0FF).withValues(alpha: 0.1),
-                    border: Border.all(color: const Color(0xFF00F0FF), width: 2),
+                    color: AppColors.accent.withValues(alpha: 0.1),
+                    border: Border.all(color: AppColors.accent, width: 2),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF00F0FF).withValues(alpha: 0.2),
+                        color: AppColors.accent.withValues(alpha: 0.2),
                         blurRadius: 20, spreadRadius: 1,
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF00F0FF), size: 40),
+                  child: Icon(Icons.auto_awesome_rounded, color: AppColors.accent, size: 40),
                 ),
                 const SizedBox(height: 28),
                 Text(
                   '¡POMODORO COMPLETADO!',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.outfit(
                     fontSize: 24, fontWeight: FontWeight.bold,
-                    color: const Color(0xFF00F0FF), letterSpacing: 2,
+                    color: AppColors.accent, letterSpacing: 2,
                   ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 Text(
                   'Has mantenido la concentración durante $durationMinutes minutos. Es hora de tomar un breve descanso y estirar el cuerpo.',
-                  style: GoogleFonts.inter(fontSize: 15, color: Colors.white70, height: 1.5),
+                  style: GoogleFonts.outfit(fontSize: 15, color: Colors.white70, height: 1.5),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
-                ElevatedButton(
+                OutlinedButton(
                   onPressed: onClose,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00F0FF),
-                    foregroundColor: Colors.black87,
-                    padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    elevation: 8,
-                    shadowColor: const Color(0xFF00F0FF).withValues(alpha: 0.3),
-                  ),
                   child: Text(
                     'VOLVER AL EDITOR',
-                    style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.2),
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.2),
                   ),
                 ),
               ],

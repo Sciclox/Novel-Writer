@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flutter UI Professional Polish"
+  short_description: "Checklist profesional para pulir UI Flutter."
+  default_prompt: "Usa esta skill para revisar y mejorar una pantalla, widget o flujo Flutter con criterios de diseno profesional, accesibilidad, responsive y consistencia visual."

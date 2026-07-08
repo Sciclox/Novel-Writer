@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:path/path.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path_provider/path_provider.dart';
+import '../models/novel_style.dart';
 
 class AppDatabase {
   static Database? _database;
@@ -19,12 +20,12 @@ class AppDatabase {
     databaseFactory = databaseFactoryFfi;
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = join(documentsDirectory.path, 'novel_writer.db');
-    return await openDatabase(
-      path,
-      version: 13,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
-    );
+      return await openDatabase(
+        path,
+        version: 18,
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+      );
   }
 
   static Future<void> _onUpgrade(
@@ -192,6 +193,84 @@ class AppDatabase {
         // Column may already exist
       }
     }
+    if (oldVersion < 14) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS capitulos_versiones (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          capitulo_id INTEGER NOT NULL,
+          contenido TEXT NOT NULL,
+          creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (capitulo_id) REFERENCES capitulos(id) ON DELETE CASCADE
+        )
+      ''');
+    }
+    if (oldVersion < 15) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS estilos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          proyecto_id INTEGER NOT NULL,
+          nombre TEXT NOT NULL,
+          orden INTEGER NOT NULL DEFAULT 0,
+          hereda_de_id INTEGER,
+          atajo TEXT,
+          config TEXT NOT NULL DEFAULT '{}',
+          creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
+        )
+      ''');
+    }
+    if (oldVersion < 16) {
+      // Recreate estilos table: nullable proyecto_id + es_global flag
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS estilos_v16 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          proyecto_id INTEGER,
+          nombre TEXT NOT NULL,
+          orden INTEGER NOT NULL DEFAULT 0,
+          hereda_de_id INTEGER,
+          atajo TEXT,
+          config TEXT NOT NULL DEFAULT '{}',
+          es_global INTEGER NOT NULL DEFAULT 0,
+          creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
+        )
+      ''');
+      await db.execute('''
+        INSERT INTO estilos_v16 (id, proyecto_id, nombre, orden, hereda_de_id, atajo, config, creado_en, actualizado_en)
+        SELECT id, proyecto_id, nombre, orden, hereda_de_id, atajo, config, creado_en, actualizado_en FROM estilos
+      ''');
+      await db.execute('DROP TABLE IF EXISTS estilos');
+      await db.execute('ALTER TABLE estilos_v16 RENAME TO estilos');
+      await _seedGlobalStyles(db);
+    }
+    if (oldVersion < 17) {
+      await db.execute('ALTER TABLE notas ADD COLUMN categoria TEXT DEFAULT "general"');
+    }
+    if (oldVersion < 18) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS categorias (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          proyecto_id INTEGER,
+          nombre TEXT NOT NULL,
+          icon TEXT NOT NULL DEFAULT 'auto_awesome',
+          color TEXT NOT NULL DEFAULT '#FFF9C4',
+          orden INTEGER DEFAULT 0,
+          creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
+        )
+      ''');
+      await _seedDefaultCategorias(db);
+      await db.execute("UPDATE notas SET categoria = '1' WHERE categoria = 'general'");
+      await db.execute("UPDATE notas SET categoria = '2' WHERE categoria = 'idea'");
+      await db.execute("UPDATE notas SET categoria = '3' WHERE categoria = 'personaje'");
+      await db.execute("UPDATE notas SET categoria = '4' WHERE categoria = 'trama'");
+      await db.execute("UPDATE notas SET categoria = '5' WHERE categoria = 'escena'");
+      await db.execute("UPDATE notas SET categoria = '6' WHERE categoria = 'investigacion'");
+      await db.execute("UPDATE notas SET categoria = '7' WHERE categoria = 'dialogo'");
+      await db.execute("UPDATE notas SET categoria = '8' WHERE categoria = 'importante'");
+    }
   }
 
   static Future<void> _onCreate(Database db, int version) async {
@@ -255,6 +334,7 @@ class AppDatabase {
         contenido TEXT NOT NULL,
         posicion_cursor INTEGER,
         color TEXT DEFAULT '#FFF9C4',
+        categoria TEXT DEFAULT 'general',
         pos_x REAL DEFAULT 0,
         pos_y REAL DEFAULT 0,
         ancho REAL DEFAULT 200,
@@ -351,12 +431,99 @@ class AppDatabase {
         FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
       )
     ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS capitulos_versiones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        capitulo_id INTEGER NOT NULL,
+        contenido TEXT NOT NULL,
+        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (capitulo_id) REFERENCES capitulos(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS estilos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proyecto_id INTEGER,
+        nombre TEXT NOT NULL,
+        orden INTEGER NOT NULL DEFAULT 0,
+        hereda_de_id INTEGER,
+        atajo TEXT,
+        config TEXT NOT NULL DEFAULT '{}',
+        es_global INTEGER NOT NULL DEFAULT 0,
+        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS categorias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proyecto_id INTEGER,
+        nombre TEXT NOT NULL,
+        icon TEXT NOT NULL DEFAULT 'auto_awesome',
+        color TEXT NOT NULL DEFAULT '#FFF9C4',
+        orden INTEGER DEFAULT 0,
+        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
+      )
+    ''');
+    await _seedDefaultCategorias(db);
+    await _seedGlobalStyles(db);
+  }
+
+  static Future<void> _seedDefaultCategorias(Database db) async {
+    final existing = await db.query('categorias', where: 'proyecto_id IS NULL', limit: 1);
+    if (existing.isNotEmpty) return;
+    final defaults = [
+      {'nombre': 'General', 'icon': 'auto_awesome', 'color': '#FFF9C4', 'orden': 0},
+      {'nombre': 'Idea', 'icon': 'lightbulb_outline', 'color': '#C8E6C9', 'orden': 1},
+      {'nombre': 'Personaje', 'icon': 'person_outline', 'color': '#E1BEE7', 'orden': 2},
+      {'nombre': 'Trama', 'icon': 'alt_route', 'color': '#FFE0B2', 'orden': 3},
+      {'nombre': 'Escena', 'icon': 'movie_creation_outlined', 'color': '#BBDEFB', 'orden': 4},
+      {'nombre': 'Investigación', 'icon': 'search_outlined', 'color': '#C5CAE9', 'orden': 5},
+      {'nombre': 'Diálogo', 'icon': 'format_quote_outlined', 'color': '#F8BBD9', 'orden': 6},
+      {'nombre': 'Importante', 'icon': 'priority_high', 'color': '#FFCDD2', 'orden': 7},
+    ];
+    for (final cat in defaults) {
+      await db.insert('categorias', {
+        'proyecto_id': null,
+        ...cat,
+        'creado_en': DateTime.now().toIso8601String(),
+      });
+    }
+  }
+
+  static Future<void> _seedGlobalStyles(Database db) async {
+    final existing = await db.query('estilos', where: 'es_global = 1', limit: 1);
+    if (existing.isNotEmpty) return;
+
+    final insertedIds = <int, int>{};
+    for (int i = 0; i < defaultStyleConfigs.length; i++) {
+      final estilo = defaultStyleConfigs[i];
+      final rawHereda = estilo['hereda_de_id'] as int?;
+      final parentId = rawHereda != null ? insertedIds[rawHereda - 1] : null;
+
+      final id = await db.insert('estilos', {
+        'proyecto_id': null,
+        'nombre': estilo['nombre'],
+        'orden': estilo['orden'],
+        'hereda_de_id': parentId,
+        'atajo': estilo['atajo'],
+        'config': jsonEncode(estilo['config']),
+        'es_global': 1,
+        'creado_en': DateTime.now().toIso8601String(),
+        'actualizado_en': DateTime.now().toIso8601String(),
+      });
+      insertedIds[i] = id;
+    }
   }
 
   // ── Proyectos ──────────────────────────────────────────
   static Future<int> insertProyecto(Map<String, dynamic> proyecto) async {
     final db = await database;
-    return await db.insert('proyectos', proyecto);
+    final id = await db.insert('proyectos', proyecto);
+    await insertEstilosPorDefecto(id);
+    return id;
   }
 
   static Future<List<Map<String, dynamic>>> getProyectos() async {
@@ -364,11 +531,22 @@ class AppDatabase {
     return await db.query('proyectos', orderBy: 'actualizado_en DESC');
   }
 
+  static const _proyectoColumns = [
+    'id', 'titulo', 'sinopsis', 'imagen_portada', 'portada_blob',
+    'creado_en', 'actualizado_en',
+  ];
+
   static Future<int> updateProyecto(Map<String, dynamic> proyecto) async {
     final db = await database;
+    final data = {
+      for (var col in _proyectoColumns)
+        if (proyecto.containsKey(col) && col != 'id' && col != 'creado_en')
+          col: proyecto[col],
+      'actualizado_en': DateTime.now().toIso8601String(),
+    };
     return await db.update(
       'proyectos',
-      {...proyecto, 'actualizado_en': DateTime.now().toIso8601String()},
+      data,
       where: 'id = ?',
       whereArgs: [proyecto['id']],
     );
@@ -628,6 +806,27 @@ class AppDatabase {
       });
     }
 
+    // Duplicar estilos personalizados del proyecto (excluye globales)
+    final estilos = await db.query(
+      'estilos',
+      where: 'proyecto_id = ? AND es_global = 0',
+      whereArgs: [proyectoId],
+    );
+
+    for (var est in estilos) {
+      await db.insert('estilos', {
+        'proyecto_id': nuevoId,
+        'nombre': est['nombre'],
+        'orden': est['orden'],
+        'hereda_de_id': est['hereda_de_id'],
+        'atajo': est['atajo'],
+        'config': est['config'],
+        'es_global': 0,
+        'creado_en': DateTime.now().toIso8601String(),
+        'actualizado_en': DateTime.now().toIso8601String(),
+      });
+    }
+
     return nuevoId;
   }
 
@@ -711,6 +910,27 @@ class AppDatabase {
   static Future<int> deleteNota(int id) async {
     final db = await database;
     return await db.delete('notas', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ── Categorías ─────────────────────────────────────────
+  static Future<List<Map<String, dynamic>>> getCategorias() async {
+    final db = await database;
+    return await db.query('categorias', where: 'proyecto_id IS NULL', orderBy: 'orden ASC');
+  }
+
+  static Future<int> insertCategoria(Map<String, dynamic> cat) async {
+    final db = await database;
+    return await db.insert('categorias', cat);
+  }
+
+  static Future<int> updateCategoria(int id, Map<String, dynamic> cat) async {
+    final db = await database;
+    return await db.update('categorias', cat, where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<int> deleteCategoria(int id) async {
+    final db = await database;
+    return await db.delete('categorias', where: 'id = ?', whereArgs: [id]);
   }
 
   // ── Tarjetas ───────────────────────────────────────────
@@ -1056,5 +1276,166 @@ class AppDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  static Future<int> insertCapituloVersion(
+    int capituloId,
+    String contenido, {
+    int palabras = 0,
+    String? motivo,
+  }) async {
+    final db = await database;
+    return await db.insert('capitulos_versiones', {
+      'capitulo_id': capituloId,
+      'contenido': contenido,
+      'palabras': palabras,
+      'motivo': motivo,
+      'creado_en': DateTime.now().toIso8601String(),
+    });
+  }
+
+  static Future<List<Map<String, dynamic>>> getCapituloVersiones(int capituloId) async {
+    final db = await database;
+    return await db.query(
+      'capitulos_versiones',
+      where: 'capitulo_id = ?',
+      whereArgs: [capituloId],
+      orderBy: 'creado_en DESC',
+    );
+  }
+
+  static Future<int> deleteCapituloVersion(int versionId) async {
+    final db = await database;
+    return await db.delete(
+      'capitulos_versiones',
+      where: 'id = ?',
+      whereArgs: [versionId],
+    );
+  }
+
+  // ── Estilos ──────────────────────────────────────────────────────────────
+
+  static Future<int> insertEstilo(Map<String, dynamic> estilo) async {
+    final db = await database;
+    return await db.insert('estilos', {
+      ...estilo,
+      'creado_en': DateTime.now().toIso8601String(),
+      'actualizado_en': DateTime.now().toIso8601String(),
+    });
+  }
+
+  static Future<List<Map<String, dynamic>>> getEstilos(int proyectoId) async {
+    final db = await database;
+
+    final globales = await db.query(
+      'estilos',
+      where: 'es_global = 1',
+      orderBy: 'orden ASC, id ASC',
+    );
+
+    final locales = await db.query(
+      'estilos',
+      where: 'proyecto_id = ? AND es_global = 0',
+      whereArgs: [proyectoId],
+      orderBy: 'orden ASC, id ASC',
+    );
+
+    final localNames = locales.map((e) => e['nombre'] as String).toSet();
+
+    final globalByName = <String, Map<String, dynamic>>{};
+    for (final g in globales) {
+      globalByName[g['nombre'] as String] = g;
+    }
+
+    final result = <Map<String, dynamic>>[];
+
+    for (final g in globales) {
+      if (!localNames.contains(g['nombre'] as String)) {
+        result.add(g);
+      }
+    }
+
+    for (final l in locales) {
+      final matchingGlobal = globalByName[l['nombre'] as String];
+      if (matchingGlobal != null) {
+        final globalConfig = jsonDecode(matchingGlobal['config'] as String) as Map<String, dynamic>;
+        final localConfig = jsonDecode(l['config'] as String) as Map<String, dynamic>;
+        final mergedConfig = Map<String, dynamic>.from(globalConfig);
+        mergedConfig.addAll(localConfig);
+        final mergedRow = Map<String, dynamic>.from(l);
+        mergedRow['config'] = jsonEncode(mergedConfig);
+        result.add(mergedRow);
+      } else {
+        result.add(l);
+      }
+    }
+
+    return result;
+  }
+
+  /// Returns only global styles (shared across all projects).
+  static Future<List<Map<String, dynamic>>> getEstilosGlobales() async {
+    final db = await database;
+    return await db.query(
+      'estilos',
+      where: 'es_global = 1',
+      orderBy: 'orden ASC, id ASC',
+    );
+  }
+
+  static Future<Map<String, dynamic>?> getEstilo(int id) async {
+    final db = await database;
+    final results = await db.query('estilos', where: 'id = ?', whereArgs: [id]);
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  static Future<int> updateEstilo(int id, Map<String, dynamic> estilo) async {
+    final db = await database;
+    return await db.update(
+      'estilos',
+      {
+        ...estilo,
+        'actualizado_en': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<int> deleteEstilo(int id) async {
+    final db = await database;
+    return await db.delete('estilos', where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<void> insertEstilosPorDefecto(int proyectoId) async {
+    // Global styles are used by default.
+    // Project-specific overrides are created only when the user forks a style.
+  }
+
+  /// Creates a project-specific copy of a global style.
+  /// The new style inherits from the global (hereda_de_id = globalStyleId).
+  /// Returns the new style's id.
+  static Future<int> forkEstiloGlobal(int globalStyleId, int proyectoId) async {
+    final db = await database;
+    final rows = await db.query('estilos', where: 'id = ?', whereArgs: [globalStyleId]);
+    if (rows.isEmpty) return -1;
+    final global = rows.first;
+    return await db.insert('estilos', {
+      'proyecto_id': proyectoId,
+      'nombre': global['nombre'],
+      'orden': global['orden'],
+      'hereda_de_id': globalStyleId,
+      'atajo': global['atajo'],
+      'config': global['config'],
+      'es_global': 0,
+      'creado_en': DateTime.now().toIso8601String(),
+      'actualizado_en': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// Removes a project-specific style override, reverting to the global style.
+  static Future<int> revertEstiloToGlobal(int localStyleId) async {
+    final db = await database;
+    return await db.delete('estilos', where: 'id = ?', whereArgs: [localStyleId]);
   }
 }

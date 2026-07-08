@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../database/app_database.dart';
+import '../shared/app_theme.dart';
+import '../shared/app_widgets.dart';
 
-Color _parseColor(String? hex, {Color fallback = const Color(0xFF00F0FF)}) {
-  if (hex == null || hex.isEmpty) return fallback;
+Color _parseColor(String? hex, {Color? fallback}) {
+  final actualFallback = fallback ?? AppColors.accent;
+  if (hex == null || hex.isEmpty) return actualFallback;
   try {
     return Color(int.parse(hex.replaceAll('#', '0xFF')));
   } catch (_) {
-    return fallback;
+    return actualFallback;
   }
 }
 
@@ -82,33 +85,29 @@ class _TimelineViewState extends State<TimelineView> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2E),
+        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          side: BorderSide(color: AppColors.separator),
         ),
         title: Text(
           '¿Eliminar evento?',
-          style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold),
+          style: GoogleFonts.outfit(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
         ),
         content: Text(
           'Esta acción no se puede deshacer.',
-          style: GoogleFonts.inter(color: Colors.white70),
+          style: GoogleFonts.outfit(color: AppColors.textSecondary),
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'CANCELAR',
-              style: GoogleFonts.inter(color: Colors.white38, fontWeight: FontWeight.w600),
-            ),
+            style: OutlinedButton.styleFrom(foregroundColor: AppColors.textTertiary, side: BorderSide(color: AppColors.textTertiary.withValues(alpha: 0.3))),
+            child: Text('CANCELAR'),
           ),
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'ELIMINAR',
-              style: GoogleFonts.inter(color: Colors.redAccent, fontWeight: FontWeight.bold),
-            ),
+            style: OutlinedButton.styleFrom(foregroundColor: AppColors.red, side: BorderSide(color: AppColors.red)),
+            child: Text('ELIMINAR'),
           ),
         ],
       ),
@@ -146,10 +145,10 @@ class _TimelineViewState extends State<TimelineView> {
             final Color activeColor = _parseColor(colorHex);
 
             return AlertDialog(
-              backgroundColor: const Color(0xFF2C2C2E),
+              backgroundColor: AppColors.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(24),
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                side: BorderSide(color: AppColors.separator),
               ),
               contentPadding: EdgeInsets.zero,
               content: SizedBox(
@@ -175,8 +174,8 @@ class _TimelineViewState extends State<TimelineView> {
                           const SizedBox(width: 16),
                           Text(
                             isNew ? 'Nuevo Punto de Trama' : 'Editar Punto de Trama',
-                            style: GoogleFonts.inter(
-                              color: Colors.white,
+                            style: GoogleFonts.outfit(
+                              color: AppColors.textPrimary,
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
                             ),
@@ -199,8 +198,8 @@ class _TimelineViewState extends State<TimelineView> {
                           const SizedBox(height: 24),
                           Text(
                             'Importancia Narrativa',
-                            style: GoogleFonts.inter(
-                              color: Colors.white38,
+                            style: GoogleFonts.outfit(
+                              color: AppColors.textTertiary,
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 1.2,
@@ -219,8 +218,8 @@ class _TimelineViewState extends State<TimelineView> {
                           const SizedBox(height: 24),
                           Text(
                             'Color del Nodo',
-                            style: GoogleFonts.inter(
-                              color: Colors.white38,
+                            style: GoogleFonts.outfit(
+                              color: AppColors.textTertiary,
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 1.2,
@@ -231,21 +230,24 @@ class _TimelineViewState extends State<TimelineView> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: colores.map((c) {
                               final cColor = _parseColor(c);
-                              return GestureDetector(
-                                onTap: () => setDialogState(() => colorHex = c),
-                                child: Container(
-                                  width: 34,
-                                  height: 34,
-                                  decoration: BoxDecoration(
-                                    color: cColor,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: colorHex == c ? Colors.white : Colors.transparent,
-                                      width: 2,
+                              return MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: GestureDetector(
+                                  onTap: () => setDialogState(() => colorHex = c),
+                                  child: Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: cColor,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: colorHex == c ? AppColors.textPrimary : Colors.transparent,
+                                        width: 2,
+                                      ),
+                                      boxShadow: colorHex == c
+                                          ? [BoxShadow(color: cColor.withValues(alpha: 0.6), blurRadius: 10, spreadRadius: 1)]
+                                          : null,
                                     ),
-                                    boxShadow: colorHex == c
-                                        ? [BoxShadow(color: cColor.withValues(alpha: 0.6), blurRadius: 10, spreadRadius: 1)]
-                                        : null,
                                   ),
                                 ),
                               );
@@ -261,40 +263,41 @@ class _TimelineViewState extends State<TimelineView> {
                       child: Row(
                         children: [
                           if (!isNew)
-                            InkWell(
-                              onTap: () {
-                                Navigator.pop(ctx);
-                                _eliminarEvento(evento['id'] as int);
-                              },
-                              borderRadius: BorderRadius.circular(12),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'ELIMINAR',
-                                      style: GoogleFonts.inter(
-                                        color: Colors.redAccent,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
+                            MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.pop(ctx);
+                                  _eliminarEvento(evento['id'] as int);
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'ELIMINAR',
+                                        style: GoogleFonts.outfit(
+                                          color: Colors.redAccent,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           const Spacer(),
-                          TextButton(
+                          OutlinedButton(
                             onPressed: () => Navigator.pop(ctx),
-                            child: Text(
-                              'DESCARTAR',
-                              style: GoogleFonts.inter(color: Colors.white38, fontWeight: FontWeight.w600),
-                            ),
+                            style: OutlinedButton.styleFrom(foregroundColor: AppColors.textTertiary, side: BorderSide(color: AppColors.textTertiary.withValues(alpha: 0.3))),
+                            child: Text('DESCARTAR'),
                           ),
                           const SizedBox(width: 12),
-                          ElevatedButton(
+                          OutlinedButton(
                             onPressed: () async {
                               if (tituloCtrl.text.trim().isEmpty) {
                                 tituloCtrl.text = 'Sin título';
@@ -319,18 +322,7 @@ class _TimelineViewState extends State<TimelineView> {
                               if (ctx.mounted) Navigator.pop(ctx);
                               _cargarEventos();
                             },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: activeColor,
-                              foregroundColor: Colors.black,
-                              elevation: 4,
-                              shadowColor: activeColor.withValues(alpha: 0.4),
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            ),
-                            child: Text(
-                              'GUARDAR',
-                              style: GoogleFonts.inter(fontWeight: FontWeight.bold, letterSpacing: 0.8),
-                            ),
+                            child: Text('GUARDAR'),
                           ),
                         ],
                       ),
@@ -348,18 +340,18 @@ class _TimelineViewState extends State<TimelineView> {
   Widget _buildField(String label, TextEditingController ctrl, IconData icon, {int maxLines = 1}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.02),
+        color: AppColors.bg,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(color: AppColors.separator),
       ),
       child: TextField(
         controller: ctrl,
         maxLines: maxLines,
-        style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
+        style: GoogleFonts.outfit(color: AppColors.textPrimary, fontSize: 14),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: GoogleFonts.inter(color: Colors.white38, fontSize: 13),
-          prefixIcon: Icon(icon, color: Colors.white38, size: 18),
+          labelStyle: GoogleFonts.outfit(color: AppColors.textTertiary, fontSize: 13),
+          prefixIcon: Icon(icon, color: AppColors.textTertiary, size: 18),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
@@ -371,30 +363,33 @@ class _TimelineViewState extends State<TimelineView> {
     Color activeColor;
     switch (val) {
       case 3: activeColor = Colors.redAccent; break;
-      case 2: activeColor = const Color(0xFF00F0FF); break;
+      case 2: activeColor = AppColors.accent; break;
       default: activeColor = Colors.blueAccent;
     }
-    return GestureDetector(
-      onTap: () => onTap(val),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 120,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? activeColor.withValues(alpha: 0.08) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? activeColor : Colors.white.withValues(alpha: 0.08),
-            width: isSelected ? 1.5 : 1.0,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => onTap(val),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: 120,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? activeColor.withValues(alpha: 0.08) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? activeColor : AppColors.separator,
+              width: isSelected ? 1.5 : 1.0,
+            ),
           ),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: GoogleFonts.inter(
-              color: isSelected ? activeColor : Colors.white38,
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          child: Center(
+            child: Text(
+              label,
+              style: GoogleFonts.outfit(
+                color: isSelected ? activeColor : AppColors.textTertiary,
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
           ),
         ),
@@ -422,13 +417,13 @@ class _TimelineViewState extends State<TimelineView> {
         return Container(
           width: constraints.maxWidth,
           height: constraints.maxHeight,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: RadialGradient(
               center: Alignment(0.0, -0.3),
               radius: 1.2,
               colors: [
-                Color(0xFF16172B),
-                const Color(0xFF1C1C1E),
+                AppColors.bg,
+                AppColors.bg,
               ],
             ),
           ),
@@ -445,32 +440,24 @@ class _TimelineViewState extends State<TimelineView> {
                   children: [
                     Text(
                       'Pared de Detective',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.outfit(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                         letterSpacing: -0.5,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Conecta los puntos y visualiza el ritmo cronológico de tu historia.',
-                      style: GoogleFonts.inter(color: Colors.white38, fontSize: 15),
+                      style: GoogleFonts.outfit(color: AppColors.textTertiary, fontSize: 15),
                     ),
                   ],
                 ),
-                ElevatedButton.icon(
+                OutlinedButton.icon(
                   onPressed: _agregarEvento,
                   icon: const Icon(Icons.add_location_alt_rounded, size: 18),
                   label: const Text('AGREGAR EVENTO'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00F0FF),
-                    foregroundColor: Colors.black,
-                    elevation: 8,
-                    shadowColor: const Color(0xFF00F0FF).withValues(alpha: 0.25),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
                 ),
               ],
             ),
@@ -478,33 +465,22 @@ class _TimelineViewState extends State<TimelineView> {
           
           Expanded(
             child: _eventos.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.timeline_rounded, size: 48, color: Colors.white24),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'No hay eventos aún',
-                          style: TextStyle(color: Colors.white38, fontSize: 16),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Presiona "AGREGAR EVENTO" para comenzar',
-                          style: TextStyle(color: Colors.white24, fontSize: 13),
-                        ),
-                      ],
-                    ),
+                ? buildEmptyState(
+                    icon: Icons.timeline_rounded,
+                    title: 'No hay eventos aún',
+                    subtitle: 'Presiona AGREGAR EVENTO para comenzar tu línea de tiempo.',
+                    actionLabel: 'AGREGAR EVENTO',
+                    onAction: _agregarEvento,
                   )
                 : Stack(
                     children: [
                       ScrollbarTheme(
                         data: ScrollbarThemeData(
                           thumbColor: WidgetStateProperty.all(
-                            const Color(0xFF00F0FF).withValues(alpha: 0.5),
+                            AppColors.accent.withValues(alpha: 0.5),
                           ),
                           trackColor: WidgetStateProperty.all(
-                            Colors.white.withValues(alpha: 0.05),
+                            AppColors.separator.withValues(alpha: 0.3),
                           ),
                           trackVisibility: WidgetStateProperty.all(true),
                           thickness: WidgetStateProperty.all(8),
@@ -722,9 +698,9 @@ class _EventNodeWidgetState extends State<_EventNodeWidget> with SingleTickerPro
                           height: _isHovered ? nodeSize + 8 : nodeSize + 4,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: const Color(0xFF1C1C1E),
+                            color: AppColors.bg,
                             border: Border.all(
-                              color: _isHovered ? Colors.white : nodeColor,
+                              color: _isHovered ? AppColors.textPrimary : nodeColor,
                               width: _isHovered ? 3.5 : 2.5,
                             ),
                             boxShadow: [
@@ -734,8 +710,8 @@ class _EventNodeWidgetState extends State<_EventNodeWidget> with SingleTickerPro
                                 spreadRadius: 1 + (pulseValue * 3),
                               ),
                               if (_isHovered)
-                                const BoxShadow(
-                                  color: Colors.white,
+                                BoxShadow(
+                                  color: AppColors.accent.withValues(alpha: 0.4),
                                   blurRadius: 16,
                                   spreadRadius: 2,
                                 ),
@@ -763,20 +739,20 @@ class _EventNodeWidgetState extends State<_EventNodeWidget> with SingleTickerPro
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: _isHovered
-                              ? const Color(0xFF3A3A3C).withValues(alpha: 0.95)
-                              : const Color(0xFF2C2C2E).withValues(alpha: 0.85),
+                              ? AppColors.surface.withValues(alpha: 0.95)
+                              : AppColors.surface.withValues(alpha: 0.85),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                             color: _isHovered
                                 ? nodeColor.withValues(alpha: 0.8)
-                                : Colors.white.withValues(alpha: 0.08),
+                                : AppColors.separator,
                             width: _isHovered ? 1.5 : 1.0,
                           ),
                           boxShadow: [
                             BoxShadow(
                               color: _isHovered
                                   ? nodeColor.withValues(alpha: 0.3)
-                                  : Colors.black.withValues(alpha: 0.4),
+                                  : Colors.black.withValues(alpha: 0.06),
                               blurRadius: _isHovered ? 24 : 12,
                               offset: Offset(0, _isHovered ? 8 : 4),
                             ),
@@ -792,7 +768,7 @@ class _EventNodeWidgetState extends State<_EventNodeWidget> with SingleTickerPro
                                 Flexible(
                                   child: Text(
                                     widget.evento['fecha_relativa']?.toUpperCase() ?? 'SIN FECHA',
-                                    style: GoogleFonts.inter(
+                                    style: GoogleFonts.outfit(
                                       color: nodeColor,
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
@@ -802,14 +778,14 @@ class _EventNodeWidgetState extends State<_EventNodeWidget> with SingleTickerPro
                                   ),
                                 ),
                                 if (_isHovered)
-                                  Icon(Icons.drag_indicator_rounded, size: 14, color: Colors.white.withValues(alpha: 0.3)),
+                                  Icon(Icons.drag_indicator_rounded, size: 14, color: AppColors.textTertiary),
                               ],
                             ),
                             const SizedBox(height: 8),
                             Text(
                               widget.evento['titulo'] ?? 'Sin título',
-                              style: GoogleFonts.inter(
-                                color: Colors.white,
+                              style: GoogleFonts.outfit(
+                                color: AppColors.textPrimary,
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -822,8 +798,8 @@ class _EventNodeWidgetState extends State<_EventNodeWidget> with SingleTickerPro
                                 (widget.evento['descripcion'] as String?)?.isNotEmpty == true
                                     ? widget.evento['descripcion']
                                     : 'Sin descripción...',
-                                style: GoogleFonts.inter(
-                                  color: _isHovered ? Colors.white70 : Colors.white38,
+                                style: GoogleFonts.outfit(
+                                  color: _isHovered ? AppColors.textSecondary : AppColors.textTertiary,
                                   fontSize: 11,
                                   height: 1.4,
                                 ),
@@ -874,18 +850,18 @@ class _TimelineNavButtonState extends State<_TimelineNavButton> {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: _hovered
-                ? const Color(0xFF00F0FF).withValues(alpha: 0.15)
-                : Colors.white.withValues(alpha: 0.05),
+                ? AppColors.accent.withValues(alpha: 0.15)
+                : AppColors.separator.withValues(alpha: 0.2),
             border: Border.all(
               color: _hovered
-                  ? const Color(0xFF00F0FF).withValues(alpha: 0.6)
-                  : Colors.white.withValues(alpha: 0.1),
+                  ? AppColors.accent.withValues(alpha: 0.6)
+                  : AppColors.separator,
               width: 1.5,
             ),
             boxShadow: _hovered
                 ? [
                     BoxShadow(
-                      color: const Color(0xFF00F0FF).withValues(alpha: 0.25),
+                      color: AppColors.accent.withValues(alpha: 0.25),
                       blurRadius: 16,
                       spreadRadius: 2,
                     ),
@@ -895,7 +871,7 @@ class _TimelineNavButtonState extends State<_TimelineNavButton> {
           child: Icon(
             widget.icon,
             size: 26,
-            color: _hovered ? const Color(0xFF00F0FF) : Colors.white38,
+            color: _hovered ? AppColors.accent : AppColors.textTertiary,
           ),
         ),
       ),

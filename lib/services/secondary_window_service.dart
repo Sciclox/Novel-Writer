@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
+import '../shared/app_theme.dart';
 
 class SecondaryWindowService {
   static final SecondaryWindowService _instance = SecondaryWindowService._internal();
@@ -68,7 +69,7 @@ class _PomodoroPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFF1C1C1E),
+      color: AppColors.bg,
       child: const Center(
         child: Text(
           'Temporizador Pomodoro\n(Próximamente)',
@@ -84,7 +85,7 @@ class _ResearchPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFF1C1C1E),
+      color: AppColors.bg,
       child: const Center(
         child: Text(
           'Panel de Investigación\n(Próximamente)',
@@ -100,7 +101,7 @@ class _OutlinePlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFF1C1C1E),
+      color: AppColors.bg,
       child: const Center(
         child: Text(
           'Vista de Esquema\n(Próximamente)',

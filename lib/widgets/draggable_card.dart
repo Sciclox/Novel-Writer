@@ -1,6 +1,7 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../database/app_database.dart';
+import '../shared/app_theme.dart';
 
 class DraggableCard extends StatefulWidget {
   final Map<String, dynamic> tarjeta;
@@ -98,9 +99,6 @@ class _DraggableCardState extends State<DraggableCard> {
     super.dispose();
   }
 
-  Color _hexToColor(String hex) =>
-      Color(int.parse(hex.replaceFirst('#', '0xFF')));
-
   (IconData, String) _tipoInfo(String tipo) {
     for (final t in _tipos) {
       if (t.$1 == tipo) return (t.$2, t.$3);
@@ -110,8 +108,6 @@ class _DraggableCardState extends State<DraggableCard> {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor =
-        _hexToColor(widget.tarjeta['color'] as String? ?? '#FFCDD2');
     final (icon, label) = _tipoInfo(_selectedType);
 
     return Transform.translate(
@@ -150,157 +146,140 @@ class _DraggableCardState extends State<DraggableCard> {
           width: (widget.tarjeta['ancho'] as num?)?.toDouble() ?? 250,
           height: (widget.tarjeta['alto'] as num?)?.toDouble() ?? 210,
           decoration: BoxDecoration(
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _isDragging ? AppColors.accent.withValues(alpha: 0.5) : AppColors.separator,
+              width: 1,
+            ),
             boxShadow: _isDragging
                 ? [
                     BoxShadow(
-                        color: bgColor.withValues(alpha: 0.25),
-                        blurRadius: 24,
-                        offset: const Offset(0, 10))
+                      color: AppColors.accent.withValues(alpha: 0.15),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    )
                   ]
                 : [
-                    const BoxShadow(
-                        color: Color(0x4D000000),
-                        blurRadius: 10,
-                        offset: Offset(2, 4))
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(2, 4),
+                    )
                   ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: bgColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: bgColor.withValues(alpha: 0.35),
-                    width: 1.5,
-                  ),
-                ),
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header: tipo + cerrar
-                    Row(
-                      children: [
-                        // Selector de tipo
-                        PopupMenuButton<String>(
-                          tooltip: 'Cambiar tipo',
-                          color: const Color(0xFF2C2C2E),
-                          onSelected: (tipo) {
-                            setState(() => _selectedType = tipo);
-                            _saveAll();
-                          },
-                          itemBuilder: (_) => _tipos
-                              .map((t) => PopupMenuItem(
-                                    value: t.$1,
-                                    child: Row(children: [
-                                      Icon(t.$2, size: 16, color: Colors.white),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        t.$3,
-                                        style: const TextStyle(color: Colors.white),
-                                      ),
-                                    ]),
-                                  ))
-                              .toList(),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(icon, size: 13, color: Colors.white70),
-                                const SizedBox(width: 4),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  PopupMenuButton<String>(
+                    tooltip: 'Cambiar tipo',
+                    color: AppColors.surface,
+                    onSelected: (tipo) {
+                      setState(() => _selectedType = tipo);
+                      _saveAll();
+                    },
+                    itemBuilder: (_) => _tipos
+                        .map((t) => PopupMenuItem(
+                              value: t.$1,
+                              child: Row(children: [
+                                Icon(t.$2, size: 16, color: AppColors.textPrimary),
+                                const SizedBox(width: 8),
                                 Text(
-                                  label,
-                                  style: const TextStyle(
-                                      fontSize: 11, color: Colors.white70),
+                                  t.$3,
+                                  style: GoogleFonts.outfit(color: AppColors.textPrimary),
                                 ),
-                                const SizedBox(width: 2),
-                                const Icon(Icons.arrow_drop_down,
-                                    size: 14, color: Colors.white54),
-                              ],
-                            ),
+                              ]),
+                            ))
+                        .toList(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.separator.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(icon, size: 13, color: AppColors.textSecondary),
+                          const SizedBox(width: 4),
+                          Text(
+                            label,
+                            style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textSecondary),
                           ),
-                        ),
-                        const Spacer(),
-                        // Drag handle
-                        Icon(Icons.drag_indicator,
-                            size: 16, color: Colors.white.withValues(alpha: 0.6)),
-                        const SizedBox(width: 6),
-                        // Cerrar
-                        GestureDetector(
-                          onTap: widget.onDelete,
-                          child: Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.close,
-                                size: 12, color: Colors.white70),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    // Título
-                    TextField(
-                      controller: _titleController,
-                      focusNode: _titleFocus,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        height: 1.2,
-                      ),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        filled: false,
-                        hintText: 'Título',
-                        hintStyle: TextStyle(
-                            color: Colors.white30,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15),
-                        contentPadding: EdgeInsets.zero,
-                        isDense: true,
+                          const SizedBox(width: 2),
+                          Icon(Icons.arrow_drop_down, size: 14, color: AppColors.textTertiary),
+                        ],
                       ),
                     ),
-                    Divider(color: Colors.white.withValues(alpha: 0.12), height: 16),
-                    // Contenido
-                    Expanded(
-                      child: TextField(
-                        controller: _contentController,
-                        focusNode: _contentFocus,
-                        maxLines: null,
-                        expands: true,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          height: 1.5,
-                          color: Colors.white70,
+                  ),
+                  const Spacer(),
+                  Icon(Icons.drag_indicator, size: 16, color: AppColors.textTertiary),
+                  const SizedBox(width: 6),
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: widget.onDelete,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: AppColors.separator.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
                         ),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          filled: false,
-                          hintText: 'Describe aquí...',
-                          hintStyle:
-                              TextStyle(color: Colors.white30, fontSize: 13),
-                          contentPadding: EdgeInsets.zero,
-                        ),
+                        child: Icon(Icons.close, size: 12, color: AppColors.textTertiary),
                       ),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _titleController,
+                focusNode: _titleFocus,
+                style: GoogleFonts.outfit(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                  height: 1.2,
+                ),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  filled: false,
+                  hintText: 'Título',
+                  hintStyle: GoogleFonts.outfit(
+                    color: AppColors.textTertiary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                  isDense: true,
                 ),
               ),
-            ),
+              Divider(color: AppColors.separator.withValues(alpha: 0.4), height: 16),
+              Expanded(
+                child: TextField(
+                  controller: _contentController,
+                  focusNode: _contentFocus,
+                  maxLines: null,
+                  expands: true,
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: AppColors.textSecondary,
+                  ),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    filled: false,
+                    hintText: 'Describe aquí...',
+                    hintStyle: GoogleFonts.outfit(color: AppColors.textTertiary, fontSize: 13),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

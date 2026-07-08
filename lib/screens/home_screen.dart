@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'project_screen.dart';
 import '../database/app_database.dart';
+import '../shared/app_theme.dart';
+import '../shared/app_widgets.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -79,158 +81,77 @@ class HomeScreenState extends State<HomeScreen> {
     final isWide = screenWidth > 900;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1C1C1E),
-      body: Column(
-        children: [
-          // Header
-          _buildHeader(isWide),
-          // Body
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator(color: Colors.white))
-                : _proyectos.isEmpty
-                    ? _buildEmptyState()
-                    : _buildProjectGrid(isWide, _proyectos),
-          ),
-        ],
+      backgroundColor: AppColors.bg,
+      body: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Encabezado tipo exporter
+            Row(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Mis Novelas',
+                      style: GoogleFonts.outfit(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Gestiona y organiza tus proyectos literarios.',
+                      style: GoogleFonts.outfit(color: Colors.white38, fontSize: 16),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                _ViewToggle(
+                  isGridView: _isGridView,
+                  onToggle: () => setState(() => _isGridView = !_isGridView),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            // Body
+            Expanded(
+              child: _loading
+                  ? Center(child: CircularProgressIndicator(color: AppColors.accent))
+                  : _proyectos.isEmpty
+                      ? _buildEmptyState()
+                      : _buildProjectGrid(isWide, _proyectos),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: Container(
         margin: const EdgeInsets.only(right: 12),
         child: FloatingActionButton.extended(
           onPressed: _mostrarDialogoNuevoProyecto,
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xFF1C1C1E),
-          elevation: 8,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: AppColors.accent,
+          foregroundColor: Colors.black87,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           icon: const Icon(Icons.add_rounded, size: 22),
           label: Text(
-            'NUEVO',
-            style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13),
+            'NUEVO PROYECTO',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(bool isWide) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(32, MediaQuery.of(context).padding.top + 12, 32, 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2C2C2E),
-        border: Border(
-          bottom: BorderSide(color: const Color(0xFF48484A).withValues(alpha: 0.5)),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.3), width: 1,
-              ),
-            ),
-            child: Icon(Icons.auto_stories_rounded, size: 14, color: Colors.white),
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'SUS NOVELAS',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 3.0,
-                ),
-              ),
-              Text(
-                '${_proyectos.length} ${_proyectos.length == 1 ? 'proyecto' : 'proyectos'}',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: const Color(0xFF6B6B8A),
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ViewToggleChip(
-                  icon: Icons.grid_view_rounded,
-                  isActive: _isGridView,
-                  onPressed: () => setState(() => _isGridView = true),
-                ),
-                const SizedBox(width: 2),
-                _ViewToggleChip(
-                  icon: Icons.list_rounded,
-                  isActive: !_isGridView,
-                  onPressed: () => setState(() => _isGridView = false),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 2),
-            ),
-            child: const Icon(Icons.menu_book_rounded, size: 48, color: Colors.white),
-          ),
-          const SizedBox(height: 32),
-          Text(
-            'Aún no tienes proyectos',
-            style: GoogleFonts.inter(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.white70,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Crea tu primer proyecto y comienza a escribir.',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              color: Colors.white38,
-            ),
-          ),
-          const SizedBox(height: 32),
-          ElevatedButton.icon(
-            onPressed: _mostrarDialogoNuevoProyecto,
-            icon: const Icon(Icons.add_rounded, size: 20),
-            label: const Text('CREAR PROYECTO'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF1C1C1E),
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-          ),
-        ],
-      ),
+    return buildEmptyState(
+      icon: Icons.menu_book_rounded,
+      title: 'Aún no tienes proyectos',
+      subtitle: 'Crea tu primer proyecto y comienza a escribir.',
+      actionLabel: 'CREAR PROYECTO',
+      onAction: _mostrarDialogoNuevoProyecto,
     );
   }
 
@@ -238,9 +159,9 @@ class HomeScreenState extends State<HomeScreen> {
     if (_isGridView) {
       return GridView.builder(
         padding: EdgeInsets.fromLTRB(
-          32,
-          28,
-          32,
+          0,
+          0,
+          0,
           MediaQuery.of(context).padding.bottom + 100,
         ),
         gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
@@ -270,9 +191,9 @@ class HomeScreenState extends State<HomeScreen> {
     } else {
       return ListView.builder(
         padding: EdgeInsets.fromLTRB(
-          32,
-          16,
-          32,
+          0,
+          0,
+          0,
           MediaQuery.of(context).padding.bottom + 100,
         ),
         itemCount: proyectos.length,
@@ -299,8 +220,11 @@ class HomeScreenState extends State<HomeScreen> {
   void _abrirProyecto(Map<String, dynamic> proyecto) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => ProjectScreen(proyecto: proyecto),
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => ProjectScreen(proyecto: proyecto),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
+        transitionDuration: const Duration(milliseconds: 250),
       ),
     );
     _cargarProyectos();
@@ -313,8 +237,11 @@ class HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF3A3A3C),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: SizedBox(
@@ -326,39 +253,34 @@ class HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text(
                     'EDITAR PROYECTO',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: Colors.white,
+                    style: GoogleFonts.outfit(
+                      fontSize: 12,
+                      color: AppColors.accent,
                       fontWeight: FontWeight.bold,
-                      letterSpacing: 3.0,
+                      letterSpacing: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Edita el título y la sinopsis',
-                    style: GoogleFonts.inter(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 24),
                   TextField(
                     controller: tituloController,
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 16),
-                    cursorColor: Colors.white,
+                    style: GoogleFonts.outfit(color: Colors.white, fontSize: 16),
+                    cursorColor: AppColors.accent,
                     decoration: InputDecoration(
                       labelText: 'Título de la obra',
-                      labelStyle: GoogleFonts.inter(color: Colors.white38),
+                      labelStyle: GoogleFonts.outfit(color: Colors.white38),
                       filled: true,
-                      fillColor: const Color(0xFF1C1C1E),
+                      fillColor: Colors.white.withValues(alpha: 0.02),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.white, width: 1.5),
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: AppColors.accent, width: 1.5),
                       ),
                     ),
                   ),
@@ -366,33 +288,38 @@ class HomeScreenState extends State<HomeScreen> {
                   TextField(
                     controller: sinopsisController,
                     maxLines: 4,
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 16),
-                    cursorColor: Colors.white,
+                    style: GoogleFonts.outfit(color: Colors.white, fontSize: 16),
+                    cursorColor: AppColors.accent,
                     decoration: InputDecoration(
                       labelText: 'Sinopsis (opcional)',
-                      labelStyle: GoogleFonts.inter(color: Colors.white38),
+                      labelStyle: GoogleFonts.outfit(color: Colors.white38),
                       filled: true,
-                      fillColor: const Color(0xFF1C1C1E),
+                      fillColor: Colors.white.withValues(alpha: 0.02),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.white, width: 1.5),
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: AppColors.accent, width: 1.5),
                       ),
                     ),
                   ),
                   const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(
+                    height: 56,
+                    child: OutlinedButton(
                       onPressed: () async {
                         if (tituloController.text.trim().isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: const Text('El título es obligatorio'),
-                              backgroundColor: Colors.redAccent,
+                              backgroundColor: AppColors.red,
                               behavior: SnackBarBehavior.floating,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
@@ -409,17 +336,9 @@ class HomeScreenState extends State<HomeScreen> {
                           _cargarProyectos();
                         }
                       },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFF1C1C1E),
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
                       child: Text(
                         'GUARDAR CAMBIOS',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                        style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
@@ -439,8 +358,11 @@ class HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF3A3A3C),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: SizedBox(
@@ -452,39 +374,34 @@ class HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text(
                     'NUEVO PROYECTO',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: Colors.white,
+                    style: GoogleFonts.outfit(
+                      fontSize: 12,
+                      color: AppColors.accent,
                       fontWeight: FontWeight.bold,
-                      letterSpacing: 3.0,
+                      letterSpacing: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Crea un nuevo proyecto de escritura',
-                    style: GoogleFonts.inter(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 24),
                   TextField(
                     controller: tituloController,
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 16),
-                    cursorColor: Colors.white,
+                    style: GoogleFonts.outfit(color: Colors.white, fontSize: 16),
+                    cursorColor: AppColors.accent,
                     decoration: InputDecoration(
                       labelText: 'Título de la obra',
-                      labelStyle: GoogleFonts.inter(color: Colors.white38),
+                      labelStyle: GoogleFonts.outfit(color: Colors.white38),
                       filled: true,
-                      fillColor: const Color(0xFF1C1C1E),
+                      fillColor: Colors.white.withValues(alpha: 0.02),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.white, width: 1.5),
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: AppColors.accent, width: 1.5),
                       ),
                     ),
                   ),
@@ -492,33 +409,38 @@ class HomeScreenState extends State<HomeScreen> {
                   TextField(
                     controller: sinopsisController,
                     maxLines: 4,
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 16),
-                    cursorColor: Colors.white,
+                    style: GoogleFonts.outfit(color: Colors.white, fontSize: 16),
+                    cursorColor: AppColors.accent,
                     decoration: InputDecoration(
                       labelText: 'Sinopsis (opcional)',
-                      labelStyle: GoogleFonts.inter(color: Colors.white38),
+                      labelStyle: GoogleFonts.outfit(color: Colors.white38),
                       filled: true,
-                      fillColor: const Color(0xFF1C1C1E),
+                      fillColor: Colors.white.withValues(alpha: 0.02),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: Colors.white, width: 1.5),
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: AppColors.accent, width: 1.5),
                       ),
                     ),
                   ),
                   const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(
+                    height: 56,
+                    child: OutlinedButton(
                       onPressed: () async {
                         if (tituloController.text.trim().isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: const Text('El título es obligatorio'),
-                              backgroundColor: Colors.redAccent,
+                              backgroundColor: AppColors.red,
                               behavior: SnackBarBehavior.floating,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
@@ -534,17 +456,9 @@ class HomeScreenState extends State<HomeScreen> {
                           _cargarProyectos();
                         }
                       },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFF1C1C1E),
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
                       child: Text(
                         'CREAR PROYECTO',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                        style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
@@ -558,73 +472,93 @@ class HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _ViewToggleChip extends StatefulWidget {
-  final IconData icon;
-  final bool isActive;
-  final VoidCallback onPressed;
+class _ViewToggle extends StatefulWidget {
+  final bool isGridView;
+  final VoidCallback onToggle;
 
-  const _ViewToggleChip({
-    required this.icon,
-    required this.isActive,
-    required this.onPressed,
+  const _ViewToggle({
+    required this.isGridView,
+    required this.onToggle,
   });
 
   @override
-  State<_ViewToggleChip> createState() => _ViewToggleChipState();
+  State<_ViewToggle> createState() => _ViewToggleState();
 }
 
-class _ViewToggleChipState extends State<_ViewToggleChip> {
-  bool _isHovered = false;
-
+class _ViewToggleState extends State<_ViewToggle> {
   @override
   Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        children: [
+          _buildSegment(
+            selected: widget.isGridView,
+            icon: Icons.grid_view_rounded,
+            label: 'Cuadrícula',
+            onTap: () {
+              if (!widget.isGridView) widget.onToggle();
+            },
+          ),
+          _buildSegment(
+            selected: !widget.isGridView,
+            icon: Icons.view_list_rounded,
+            label: 'Lista',
+            onTap: () {
+              if (widget.isGridView) widget.onToggle();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSegment({
+    required bool selected,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: widget.onPressed,
+        onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: widget.isActive
-                ? Colors.white
-                : _isHovered
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                widget.icon,
-                size: 14,
-                color: widget.isActive
-                    ? const Color(0xFF1C1C1E)
-                    : _isHovered
-                        ? Colors.white
-                        : Colors.white38,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                widget.icon == Icons.grid_view_rounded ? 'Cuadrícula' : 'Lista',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: widget.isActive
-                      ? const Color(0xFF1C1C1E)
-                      : _isHovered
-                          ? Colors.white
-                          : Colors.white38,
-                ),
-              ),
-            ],
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accent.withValues(alpha: 0.08) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? AppColors.accent : Colors.transparent,
+            width: 1.5,
           ),
         ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? AppColors.accent : Colors.white54,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: GoogleFonts.outfit(
+                fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                fontSize: 13,
+                color: selected ? AppColors.accent : Colors.white54,
+              ),
+            )
+          ],
+        ),
       ),
+    ),
     );
   }
 }
@@ -681,23 +615,9 @@ class _BuildGridItemState extends State<_BuildGridItem>
 
   @override
   Widget build(BuildContext context) {
-    final colors = [
-      const Color(0xFF1E1B4B),
-      const Color(0xFF1B1340),
-      const Color(0xFF1B2A35),
-      const Color(0xFF2D1B2E),
-      const Color(0xFF1B2A2A),
-    ];
-    final accentColors = [
-      const Color(0xFF6366F1),
-      const Color(0xFF8B5CF6),
-      const Color(0xFF06B6D4),
-      const Color(0xFFEC4899),
-      const Color(0xFF22C55E),
-    ];
-    final coverColor = colors[widget.index % colors.length];
+    final coverColor = AppColors.bookCoverColors[widget.index % AppColors.bookCoverColors.length];
     final spineColor = Color.lerp(coverColor, Colors.black, 0.35)!;
-    final accent = accentColors[widget.index % accentColors.length];
+    final accent = AppColors.bookAccentColors[widget.index % AppColors.bookAccentColors.length];
 
     return Column(
       children: [
@@ -786,8 +706,8 @@ class _BuildGridItemState extends State<_BuildGridItem>
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: [
-                                  const Color(0xFFF5E6D3),
-                                  const Color(0xFFE8D5C0),
+                                  const Color(0xFFF8F8F8),
+                                  const Color(0xFFEEEEEE),
                                 ],
                               ),
                             ),
@@ -797,7 +717,7 @@ class _BuildGridItemState extends State<_BuildGridItem>
                               children: [
                                 Text(
                                   'Sinopsis',
-                                  style: GoogleFonts.inter(
+                                  style: GoogleFonts.outfit(
                                     color: const Color(0xFF2C1810).withValues(alpha: 0.5),
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
@@ -817,7 +737,7 @@ class _BuildGridItemState extends State<_BuildGridItem>
                                       widget.proyecto['sinopsis']?.toString().isNotEmpty == true
                                           ? widget.proyecto['sinopsis']
                                           : 'Sin sinopsis disponible',
-                                      style: GoogleFonts.inter(
+                                      style: GoogleFonts.outfit(
                                         color: const Color(0xFF2C1810),
                                         fontSize: 13,
                                         height: 1.5,
@@ -886,8 +806,8 @@ class _BuildGridItemState extends State<_BuildGridItem>
                                       const Spacer(),
                                       Text(
                                         widget.proyecto['titulo'] ?? 'Sin título',
-                                        style: GoogleFonts.inter(
-                                          color: Colors.white,
+                                        style: GoogleFonts.outfit(
+                                          color: AppColors.textPrimary,
                                           fontSize: 22,
                                           fontWeight: FontWeight.bold,
                                           height: 1.2,
@@ -899,7 +819,7 @@ class _BuildGridItemState extends State<_BuildGridItem>
                                       Container(
                                         width: 60,
                                         height: 1.5,
-                                        color: accent.withValues(alpha: 0.5),
+                                        color: accent,
                                       ),
                                       const SizedBox(height: 10),
                                       Row(
@@ -926,7 +846,7 @@ class _BuildGridItemState extends State<_BuildGridItem>
                                               height: 1.5,
                                               margin: EdgeInsets.only(left: i == 0 ? 0 : 2),
                                               decoration: BoxDecoration(
-                                                color: Colors.white.withValues(alpha: 0.05 + i * 0.03),
+                                                color: AppColors.textTertiary.withValues(alpha: 0.2 + i * 0.1),
                                                 borderRadius: BorderRadius.circular(1),
                                               ),
                                             ),
@@ -966,7 +886,7 @@ class _BuildGridItemState extends State<_BuildGridItem>
                 height: 28,
                 child: PopupMenuButton<String>(
                   padding: EdgeInsets.zero,
-                  color: const Color(0xFF3A3A3C),
+                  color: AppColors.card,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -988,7 +908,7 @@ class _BuildGridItemState extends State<_BuildGridItem>
                           const SizedBox(width: 10),
                           Text(
                             'Editar',
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.outfit(
                               color: Colors.white,
                               fontSize: 13,
                             ),
@@ -1005,7 +925,7 @@ class _BuildGridItemState extends State<_BuildGridItem>
                           const SizedBox(width: 10),
                           Text(
                             'Subir portada',
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.outfit(
                               color: Colors.white,
                               fontSize: 13,
                             ),
@@ -1023,7 +943,7 @@ class _BuildGridItemState extends State<_BuildGridItem>
                             const SizedBox(width: 10),
                             Text(
                               'Quitar portada',
-                              style: GoogleFonts.inter(
+                              style: GoogleFonts.outfit(
                                 color: Colors.orangeAccent,
                                 fontSize: 13,
                               ),
@@ -1040,7 +960,7 @@ class _BuildGridItemState extends State<_BuildGridItem>
                           const SizedBox(width: 10),
                           Text(
                             'Duplicar',
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.outfit(
                               color: Colors.white,
                               fontSize: 13,
                             ),
@@ -1057,7 +977,7 @@ class _BuildGridItemState extends State<_BuildGridItem>
                           const SizedBox(width: 10),
                           Text(
                             'Eliminar',
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.outfit(
                               color: Colors.redAccent,
                               fontSize: 13,
                             ),
@@ -1272,7 +1192,7 @@ class _StatLabel extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           label,
-          style: GoogleFonts.inter(
+          style: GoogleFonts.outfit(
             color: Colors.white.withValues(alpha: 0.6),
             fontSize: 11,
             fontWeight: FontWeight.w500,
@@ -1332,24 +1252,21 @@ class _BuildListItemState extends State<_BuildListItem> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.symmetric(vertical: 5),
-          padding: const EdgeInsets.fromLTRB(16, 16, 20, 16),
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: _isHovered
-                ? const Color(0xFF18192B)
-                : const Color(0xFF2C2C2E),
-            borderRadius: BorderRadius.circular(16),
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: _isHovered
-                  ? Colors.white.withValues(alpha: 0.2)
-                  : Colors.white.withValues(alpha: 0.04),
-              width: 1,
+                  ? AppColors.accent.withValues(alpha: 0.3)
+                  : Colors.white.withValues(alpha: 0.05),
             ),
             boxShadow: _isHovered
                 ? [
                     BoxShadow(
-                      color: Colors.white.withValues(alpha: 0.04),
-                      blurRadius: 20,
+                      color: AppColors.accent.withValues(alpha: 0.1),
+                      blurRadius: 24,
                       offset: const Offset(0, 4),
                     ),
                   ]
@@ -1376,7 +1293,7 @@ class _BuildListItemState extends State<_BuildListItem> {
                         Expanded(
                           child: Text(
                             widget.proyecto['titulo'] ?? 'Sin título',
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.outfit(
                               color: Colors.white,
                               fontSize: 17,
                               fontWeight: FontWeight.w600,
@@ -1410,8 +1327,8 @@ class _BuildListItemState extends State<_BuildListItem> {
                       const SizedBox(height: 10),
                       Text(
                         widget.proyecto['sinopsis'],
-                        style: GoogleFonts.inter(
-                          color: Colors.white.withValues(alpha: 0.3),
+                        style: GoogleFonts.outfit(
+                          color: Colors.white38,
                           fontSize: 12,
                           height: 1.4,
                           fontStyle: FontStyle.italic,
@@ -1467,20 +1384,20 @@ class _StatPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 11, color: Colors.white.withValues(alpha: 0.6)),
+          Icon(icon, size: 11, color: Colors.white54),
           const SizedBox(width: 4),
           Text(
             label,
-            style: GoogleFonts.inter(
-              color: Colors.white.withValues(alpha: 0.7),
+            style: GoogleFonts.outfit(
+              color: Colors.white70,
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
           ),
           Text(
             ' $suffix',
-            style: GoogleFonts.inter(
-              color: Colors.white.withValues(alpha: 0.35),
+            style: GoogleFonts.outfit(
+              color: Colors.white30,
               fontSize: 11,
             ),
           ),
@@ -1539,10 +1456,10 @@ class _ListActionChipState extends State<_ListActionChip> {
         child: show
             ? PopupMenuButton<String>(
                 padding: EdgeInsets.zero,
-                color: const Color(0xFF3A3A3C),
+                color: AppColors.card,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: const Color(0xFF48484A), width: 1),
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 1),
                 ),
                 offset: const Offset(0, 4),
                 onSelected: (value) {
@@ -1618,7 +1535,7 @@ class _MenuRow extends StatelessWidget {
         const SizedBox(width: 8),
         Text(
           text,
-          style: GoogleFonts.inter(
+          style: GoogleFonts.outfit(
             color: isDanger ? Colors.redAccent : Colors.white,
             fontSize: 12,
           ),
@@ -1646,14 +1563,7 @@ class _MiniBook extends StatefulWidget {
 class _MiniBookState extends State<_MiniBook> {
   @override
   Widget build(BuildContext context) {
-    final colors = [
-      const Color(0xFF1E1B4B),
-      const Color(0xFF1B1340),
-      const Color(0xFF1B2A35),
-      const Color(0xFF2D1B2E),
-      const Color(0xFF1B2A2A),
-    ];
-    final coverColor = colors[widget.index % colors.length];
+    final coverColor = AppColors.bookCoverColors[widget.index % AppColors.bookCoverColors.length];
     final spineColor = Color.lerp(coverColor, Colors.black, 0.35)!;
     final imageBytes = widget.proyecto['portada_blob'] as Uint8List?;
     final hasCover = imageBytes != null && imageBytes.isNotEmpty;
@@ -1771,7 +1681,7 @@ class _MiniBookState extends State<_MiniBook> {
                         ),
                         child: Text(
                           widget.proyecto['titulo'] ?? '',
-                          style: GoogleFonts.inter(
+                          style: GoogleFonts.outfit(
                             color: Colors.white,
                             fontSize: 7,
                             fontWeight: FontWeight.bold,
