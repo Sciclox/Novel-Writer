@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import '../database/app_database.dart';
@@ -25,12 +26,23 @@ class _ExporterViewState extends State<ExporterView> {
   bool _isLoading = true;
 
   // Opciones de exportación
-  String _exportFormat = 'markdown'; // Options: 'markdown', 'txt', 'pdf', 'epub'
+  String _exportFormat = 'markdown'; // Options: 'markdown', 'txt', 'pdf', 'epub', 'webnovel'
   bool _incluirTituloProyecto = true;
   bool _incluirSinopsis = true;
   bool _incluirNumeroCapitulo = true;
   bool _incluirTituloCapitulo = true;
   String _separador = 'Salto de Página (\\f)'; // Opciones: 'Salto de Página (\\f)', 'Línea Horizontal (---)', 'Asteriscos (***)', 'Espacio Doble'
+
+  // Notas de autor para modo Web Novel
+  final TextEditingController _authorNoteHeaderController = TextEditingController();
+  final TextEditingController _authorNoteFooterController = TextEditingController();
+
+  @override
+  void dispose() {
+    _authorNoteHeaderController.dispose();
+    _authorNoteFooterController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -67,6 +79,36 @@ class _ExporterViewState extends State<ExporterView> {
             final insertVal = op['insert'];
             if (insertVal is String) {
               sb.write(insertVal);
+            }
+          }
+        }
+        return sb.toString();
+      } catch (e) {
+        // Fallback
+      }
+    }
+    return content;
+  }
+
+  String _deltaToMarkdown(String content) {
+    if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
+      try {
+        final List<dynamic> json = jsonDecode(content);
+        final sb = StringBuffer();
+        for (var op in json) {
+          if (op is Map && op.containsKey('insert')) {
+            final insertVal = op['insert'];
+            if (insertVal is String) {
+              final attrs = op['attributes'] as Map<String, dynamic>?;
+              String text = insertVal;
+              if (attrs != null && text.trim().isNotEmpty) {
+                if (attrs['bold'] == true) text = '**$text**';
+                if (attrs['italic'] == true) text = '*$text*';
+                if (attrs['header'] == 1) text = '\n### $text\n';
+                if (attrs['header'] == 2) text = '\n#### $text\n';
+                if (attrs['blockquote'] == true) text = '\n> $text';
+              }
+              sb.write(text);
             }
           }
         }
@@ -115,7 +157,7 @@ class _ExporterViewState extends State<ExporterView> {
     StringBuffer sb = StringBuffer();
 
     if (_incluirTituloProyecto) {
-      if (_exportFormat == 'markdown') {
+      if (_exportFormat == 'markdown' || _exportFormat == 'webnovel') {
         sb.writeln('# ${widget.proyecto['titulo'] ?? 'Sin título'}');
         sb.writeln();
       } else {
@@ -126,7 +168,7 @@ class _ExporterViewState extends State<ExporterView> {
     }
 
     if (_incluirSinopsis && widget.proyecto['sinopsis'] != null && widget.proyecto['sinopsis'].toString().trim().isNotEmpty) {
-      if (_exportFormat == 'markdown') {
+      if (_exportFormat == 'markdown' || _exportFormat == 'webnovel') {
         sb.writeln('> ${widget.proyecto['sinopsis']}');
         sb.writeln();
       } else {
@@ -137,25 +179,44 @@ class _ExporterViewState extends State<ExporterView> {
       }
     }
 
+    // Nota del autor inicial (Web Novel)
+    if (_exportFormat == 'webnovel' && _authorNoteHeaderController.text.trim().isNotEmpty) {
+      sb.writeln('> **[Nota del Autor / Author\'s Note]:**');
+      for (final line in _authorNoteHeaderController.text.trim().split('\n')) {
+        sb.writeln('> $line');
+      }
+      sb.writeln();
+      sb.writeln('---');
+      sb.writeln();
+    }
+
     int indexContador = 1;
     final seleccionadosOrdenados = _capitulos.where((c) => _seleccionados[c['id']] == true).toList();
 
     for (var i = 0; i < seleccionadosOrdenados.length; i++) {
       final cap = seleccionadosOrdenados[i];
       final titulo = cap['titulo'] ?? 'Sin título';
-      final contenido = _getPlainText(cap['contenido'] ?? '');
+      final contenido = (_exportFormat == 'markdown' || _exportFormat == 'webnovel')
+          ? _deltaToMarkdown(cap['contenido'] ?? '')
+          : _getPlainText(cap['contenido'] ?? '');
 
       if (_incluirNumeroCapitulo || _incluirTituloCapitulo) {
         String headerText = '';
+        final cleanTitle = titulo.replaceFirst(
+          RegExp(r'^cap[ií]tulo\s*\d*[:\s-]*', caseSensitive: false),
+          '',
+        ).trim();
+        final displayTitle = cleanTitle.isNotEmpty ? cleanTitle : titulo;
+
         if (_incluirNumeroCapitulo && _incluirTituloCapitulo) {
-          headerText = 'Capítulo $indexContador: $titulo';
+          headerText = 'Capítulo $indexContador: $displayTitle';
         } else if (_incluirNumeroCapitulo) {
           headerText = 'Capítulo $indexContador';
         } else {
           headerText = titulo;
         }
 
-        if (_exportFormat == 'markdown') {
+        if (_exportFormat == 'markdown' || _exportFormat == 'webnovel') {
           sb.writeln('## $headerText');
           sb.writeln();
         } else {
@@ -174,7 +235,30 @@ class _ExporterViewState extends State<ExporterView> {
       indexContador++;
     }
 
+    // Nota del autor de cierre (Web Novel)
+    if (_exportFormat == 'webnovel' && _authorNoteFooterController.text.trim().isNotEmpty) {
+      sb.writeln();
+      sb.writeln('---');
+      sb.writeln();
+      sb.writeln('> **[Fin del Capítulo - Palabras del Autor]:**');
+      for (final line in _authorNoteFooterController.text.trim().split('\n')) {
+        sb.writeln('> $line');
+      }
+      sb.writeln();
+    }
+
     return sb.toString();
+  }
+
+  void _copiarFormatoWeb() {
+    final content = _generateContent();
+    Clipboard.setData(ClipboardData(text: content));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('¡Texto copiado al portapapeles listo para publicar! ($_totalSelectedWords palabras)'),
+        backgroundColor: AppColors.accent,
+      ),
+    );
   }
 
   void _mostrarPreview() {
@@ -242,9 +326,9 @@ class _ExporterViewState extends State<ExporterView> {
                           ),
                         ),
                         child: Text(
-                          _exportFormat == 'markdown' ? '.md' : _exportFormat == 'txt' ? '.txt' : _exportFormat == 'pdf' ? '.pdf' : '.epub',
+                          _exportFormat == 'markdown' ? '.md' : _exportFormat == 'webnovel' ? 'web.md' : _exportFormat == 'txt' ? '.txt' : _exportFormat == 'pdf' ? '.pdf' : '.epub',
                           style: GoogleFonts.outfit(
-                            color: _exportFormat == 'markdown' ? AppColors.accent : Colors.white54,
+                            color: (_exportFormat == 'markdown' || _exportFormat == 'webnovel') ? AppColors.accent : Colors.white54,
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                           ),
@@ -339,7 +423,7 @@ class _ExporterViewState extends State<ExporterView> {
         .toLowerCase()
         .replaceAll(RegExp(r'[\\/:*?"<>| ]'), '_');
     
-    final ext = _exportFormat == 'markdown'
+    final ext = (_exportFormat == 'markdown' || _exportFormat == 'webnovel')
         ? 'md'
         : _exportFormat == 'txt'
             ? 'txt'
@@ -505,31 +589,104 @@ class _ExporterViewState extends State<ExporterView> {
             runSpacing: 8,
             children: [
               SizedBox(
-                width: 150,
+                width: 175,
                 child: _buildFormatButton('Markdown (.md)', _exportFormat == 'markdown', () {
                   setState(() => _exportFormat = 'markdown');
                 }),
               ),
               SizedBox(
-                width: 150,
+                width: 175,
                 child: _buildFormatButton('Texto Plano (.txt)', _exportFormat == 'txt', () {
                   setState(() => _exportFormat = 'txt');
                 }),
               ),
               SizedBox(
-                width: 150,
+                width: 175,
                 child: _buildFormatButton('PDF (.pdf)', _exportFormat == 'pdf', () {
                   setState(() => _exportFormat = 'pdf');
                 }),
               ),
               SizedBox(
-                width: 150,
+                width: 175,
                 child: _buildFormatButton('EPUB (.epub)', _exportFormat == 'epub', () {
                   setState(() => _exportFormat = 'epub');
                 }),
               ),
+              SizedBox(
+                width: 358,
+                child: _buildFormatButton('Web Novel / Publicación Digital', _exportFormat == 'webnovel', () {
+                  setState(() => _exportFormat = 'webnovel');
+                }),
+              ),
             ],
           ),
+          if (_exportFormat == 'webnovel') ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.accent.withValues(alpha: 0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.auto_stories_rounded, size: 16, color: AppColors.accent),
+                      const SizedBox(width: 8),
+                      Text(
+                        'MODO NOVELA WEB (NOTAS DE AUTOR)',
+                        style: GoogleFonts.outfit(
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Nota del Autor (Encabezado):',
+                    style: GoogleFonts.outfit(color: Colors.white70, fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _authorNoteHeaderController,
+                    maxLines: 2,
+                    style: GoogleFonts.outfit(color: Colors.white, fontSize: 12),
+                    decoration: InputDecoration(
+                      hintText: 'Ej: ¡Bienvenidos al inicio de la novela! Saludos a todos los lectores.',
+                      hintStyle: GoogleFonts.outfit(color: Colors.white24, fontSize: 11),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.03),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Nota del Autor (Pie de página):',
+                    style: GoogleFonts.outfit(color: Colors.white70, fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _authorNoteFooterController,
+                    maxLines: 2,
+                    style: GoogleFonts.outfit(color: Colors.white, fontSize: 12),
+                    decoration: InputDecoration(
+                      hintText: 'Ej: ¿Qué les pareció el despertar del 10° Príncipe? Dejen sus comentarios...',
+                      hintStyle: GoogleFonts.outfit(color: Colors.white24, fontSize: 11),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.03),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           const Divider(color: Colors.white10),
           const SizedBox(height: 16),
@@ -725,6 +882,21 @@ class _ExporterViewState extends State<ExporterView> {
               style: GoogleFonts.outfit(fontSize: 15),
             ),
           ),
+          if (_exportFormat == 'webnovel') ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _copiarFormatoWeb,
+              icon: const Icon(Icons.copy_all_rounded, size: 20),
+              label: Text(
+                'COPIAR FORMATO WEB',
+                style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                side: BorderSide(color: AppColors.accent, width: 1.5),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1140,7 +1312,7 @@ class _ExporterViewState extends State<ExporterView> {
     final zipEncoder = ZipEncoder();
     final zipData = zipEncoder.encode(archive);
     final file = File(path);
-    await file.writeAsBytes(zipData!);
+    await file.writeAsBytes(zipData);
   }
 
 }

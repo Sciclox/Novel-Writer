@@ -9,6 +9,7 @@ import 'notes_view.dart';
 import 'ideas_view.dart';
 import 'estilos_view.dart';
 import 'exporter_view.dart';
+import 'lore_graph_view.dart';
 import '../database/app_database.dart';
 import '../shared/app_theme.dart';
 import '../widgets/fluid_dock.dart';
@@ -24,6 +25,7 @@ class ProjectScreen extends StatefulWidget {
 
 class _ProjectScreenState extends State<ProjectScreen> {
   int _selectedIndex = 0;
+  bool _showDock = true;
   int _totalWords = 0;
   int _totalChapters = 0;
   int _totalCharacters = 0;
@@ -75,6 +77,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
     {'title': 'Línea de Tiempo', 'icon': CupertinoIcons.clock},
     {'title': 'Personajes', 'icon': CupertinoIcons.person_2},
     {'title': 'Lugares', 'icon': CupertinoIcons.map_pin},
+    {'title': 'Red de Lore', 'icon': CupertinoIcons.circle_grid_hex},
     {'title': 'Notas', 'icon': CupertinoIcons.doc_plaintext},
     {'title': 'Ideas', 'icon': CupertinoIcons.lightbulb},
     {'title': 'Estilos', 'icon': CupertinoIcons.textformat_size},
@@ -95,17 +98,79 @@ class _ProjectScreenState extends State<ProjectScreen> {
             ],
           ),
         ),
-        FluidDock(
-          items: _menuItems.map((m) => FluidDockItem(
-            icon: m['icon'] as IconData,
-            tooltip: m['title'] as String,
-          )).toList(),
-          selectedIndex: _selectedIndex,
-          onItemSelected: (i) {
-            setState(() => _selectedIndex = i);
-            if (i == 0) _cargarStats();
-          },
-          onBack: () => Navigator.pop(context),
+        AnimatedSlide(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOutCubic,
+          offset: _showDock ? Offset.zero : const Offset(0, -1.2),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: _showDock ? 1.0 : 0.0,
+            child: IgnorePointer(
+              ignoring: !_showDock,
+              child: FluidDock(
+                items: _menuItems.map((m) => FluidDockItem(
+                  icon: m['icon'] as IconData,
+                  tooltip: m['title'] as String,
+                )).toList(),
+                selectedIndex: _selectedIndex,
+                onItemSelected: (i) {
+                  setState(() => _selectedIndex = i);
+                  if (i == 0) _cargarStats();
+                },
+                onBack: () => Navigator.pop(context),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 8,
+          right: 14,
+          child: Tooltip(
+            message: _showDock ? 'Ocultar dock de navegación' : 'Mostrar dock de navegación',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => setState(() => _showDock = !_showDock),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.separator.withValues(alpha: 0.5)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _showDock ? Icons.keyboard_arrow_up_rounded : Icons.dock_rounded,
+                        size: 16,
+                        color: _showDock ? AppColors.textTertiary : AppColors.accent,
+                      ),
+                      if (!_showDock) ...[
+                        const SizedBox(width: 4),
+                        Text(
+                          'Menú',
+                          style: GoogleFonts.outfit(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -144,10 +209,11 @@ class _ProjectScreenState extends State<ProjectScreen> {
       case 2: return TimelineView(proyectoId: widget.proyecto['id'] as int);
       case 3: return CharactersView(proyectoId: widget.proyecto['id'] as int);
       case 4: return PlacesView(proyectoId: widget.proyecto['id'] as int);
-      case 5: return NotesView(proyectoId: widget.proyecto['id'] as int);
-      case 6: return IdeasView(proyectoId: widget.proyecto['id'] as int);
-      case 7: return EstilosView(proyectoId: widget.proyecto['id'] as int);
-      case 8: return ExporterView(proyecto: widget.proyecto);
+      case 5: return LoreGraphView(proyectoId: widget.proyecto['id'] as int);
+      case 6: return NotesView(proyectoId: widget.proyecto['id'] as int);
+      case 7: return IdeasView(proyectoId: widget.proyecto['id'] as int);
+      case 8: return EstilosView(proyectoId: widget.proyecto['id'] as int);
+      case 9: return ExporterView(proyecto: widget.proyecto);
       default: return const Center(child: Text('Vista no encontrada'));
     }
   }
@@ -774,10 +840,20 @@ class _ProjectScreenState extends State<ProjectScreen> {
             child: Divider(height: 1, color: Colors.white10),
           ),
           _QuickActionItem(
+            icon: CupertinoIcons.circle_grid_hex,
+            label: 'Red de Lore',
+            subtitle: 'Grafo y coherencia narrativa',
+            onTap: () => setState(() => _selectedIndex = 5),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Divider(height: 1, color: Colors.white10),
+          ),
+          _QuickActionItem(
             icon: CupertinoIcons.doc_plaintext,
             label: 'Notas',
             subtitle: 'Notas y apuntes',
-            onTap: () => setState(() => _selectedIndex = 5),
+            onTap: () => setState(() => _selectedIndex = 6),
           ),
           const SizedBox(height: 24),
           Row(

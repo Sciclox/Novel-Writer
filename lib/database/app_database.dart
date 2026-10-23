@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:path/path.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -15,6 +16,10 @@ class AppDatabase {
     return _database!;
   }
 
+  static void setDatabaseForTesting(Database? db) {
+    _database = db;
+  }
+
   static Future<Database> _initDatabase() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
@@ -22,11 +27,35 @@ class AppDatabase {
     String path = join(documentsDirectory.path, 'novel_writer.db');
       return await openDatabase(
         path,
-        version: 18,
+        version: 21,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
   }
+
+  static int _countWordsStatic(String text) {
+    if (text.isEmpty) return 0;
+    String plain = text;
+    if (text.trim().startsWith('[') && text.trim().endsWith(']')) {
+      try {
+        final List<dynamic> json = jsonDecode(text);
+        final sb = StringBuffer();
+        for (var op in json) {
+          if (op is Map && op.containsKey('insert')) {
+            final insertVal = op['insert'];
+            if (insertVal is String) {
+              sb.write(insertVal);
+            }
+          }
+        }
+        plain = sb.toString();
+      } catch (_) {}
+    }
+    return plain.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+  }
+
+  static Future<void> upgradeDatabaseForTesting(Database db, int oldVersion, int newVersion) =>
+      _onUpgrade(db, oldVersion, newVersion);
 
   static Future<void> _onUpgrade(
     Database db,
@@ -271,6 +300,99 @@ class AppDatabase {
       await db.execute("UPDATE notas SET categoria = '7' WHERE categoria = 'dialogo'");
       await db.execute("UPDATE notas SET categoria = '8' WHERE categoria = 'importante'");
     }
+    if (oldVersion < 19) {
+      try {
+        await db.execute('ALTER TABLE capitulos ADD COLUMN palabras INTEGER DEFAULT 0');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE capitulos ADD COLUMN meta_sesion INTEGER DEFAULT 0');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE capitulos ADD COLUMN meta_diaria INTEGER DEFAULT 0');
+      } catch (_) {}
+      try {
+        final caps = await db.query('capitulos', columns: ['id', 'contenido']);
+        for (final cap in caps) {
+          final content = cap['contenido'] as String? ?? '';
+          final words = _countWordsStatic(content);
+          await db.update(
+            'capitulos',
+            {'palabras': words},
+            where: 'id = ?',
+            whereArgs: [cap['id']],
+          );
+        }
+      } catch (_) {}
+    }
+    if (oldVersion < 20) {
+      try {
+        await db.execute("ALTER TABLE capitulos ADD COLUMN sinopsis TEXT DEFAULT ''");
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE capitulos ADD COLUMN pov_personaje_id INTEGER DEFAULT NULL');
+      } catch (_) {}
+      try {
+        await db.execute("ALTER TABLE capitulos ADD COLUMN estado TEXT DEFAULT 'borrador'");
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE capitulos ADD COLUMN meta_palabras INTEGER DEFAULT 0');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE capitulos ADD COLUMN eliminado_en TIMESTAMP DEFAULT NULL');
+      } catch (_) {}
+    }
+    if (oldVersion < 21) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS grafo_nodos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          proyecto_id INTEGER NOT NULL,
+          tipo TEXT NOT NULL,
+          referencia_id INTEGER,
+          nombre TEXT NOT NULL,
+          subtitulo TEXT,
+          descripcion TEXT,
+          color TEXT,
+          pos_x REAL DEFAULT 0.0,
+          pos_y REAL DEFAULT 0.0,
+          estado TEXT DEFAULT 'activo',
+          propiedades TEXT,
+          creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS grafo_aristas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          proyecto_id INTEGER NOT NULL,
+          nodo_origen_id INTEGER NOT NULL,
+          nodo_destino_id INTEGER NOT NULL,
+          tipo_relacion TEXT NOT NULL,
+          etiqueta TEXT,
+          intensidad REAL DEFAULT 1.0,
+          es_bidireccional INTEGER DEFAULT 0,
+          detalles TEXT,
+          creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE,
+          FOREIGN KEY (nodo_origen_id) REFERENCES grafo_nodos(id) ON DELETE CASCADE,
+          FOREIGN KEY (nodo_destino_id) REFERENCES grafo_nodos(id) ON DELETE CASCADE
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS capitulos_coherencia (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          capitulo_id INTEGER NOT NULL UNIQUE,
+          lugar_id INTEGER,
+          personajes_ids TEXT,
+          artefactos_ids TEXT,
+          estado_salud TEXT,
+          secretos_revelados TEXT,
+          notas_continuidad TEXT,
+          FOREIGN KEY (capitulo_id) REFERENCES capitulos(id) ON DELETE CASCADE
+        )
+      ''');
+    }
   }
 
   static Future<void> _onCreate(Database db, int version) async {
@@ -307,6 +429,14 @@ class AppDatabase {
         contenido TEXT DEFAULT '',
         orden INTEGER NOT NULL DEFAULT 0,
         tipo TEXT NOT NULL DEFAULT 'capitulo',
+        palabras INTEGER DEFAULT 0,
+        meta_sesion INTEGER DEFAULT 0,
+        meta_diaria INTEGER DEFAULT 0,
+        sinopsis TEXT DEFAULT '',
+        pov_personaje_id INTEGER DEFAULT NULL,
+        estado TEXT DEFAULT 'borrador',
+        meta_palabras INTEGER DEFAULT 0,
+        eliminado_en TIMESTAMP DEFAULT NULL,
         creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (manuscrito_id) REFERENCES manuscritos(id) ON DELETE CASCADE
@@ -467,6 +597,54 @@ class AppDatabase {
         FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
       )
     ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS grafo_nodos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proyecto_id INTEGER NOT NULL,
+        tipo TEXT NOT NULL,
+        referencia_id INTEGER,
+        nombre TEXT NOT NULL,
+        subtitulo TEXT,
+        descripcion TEXT,
+        color TEXT,
+        pos_x REAL DEFAULT 0.0,
+        pos_y REAL DEFAULT 0.0,
+        estado TEXT DEFAULT 'activo',
+        propiedades TEXT,
+        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS grafo_aristas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proyecto_id INTEGER NOT NULL,
+        nodo_origen_id INTEGER NOT NULL,
+        nodo_destino_id INTEGER NOT NULL,
+        tipo_relacion TEXT NOT NULL,
+        etiqueta TEXT,
+        intensidad REAL DEFAULT 1.0,
+        es_bidireccional INTEGER DEFAULT 0,
+        detalles TEXT,
+        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE,
+        FOREIGN KEY (nodo_origen_id) REFERENCES grafo_nodos(id) ON DELETE CASCADE,
+        FOREIGN KEY (nodo_destino_id) REFERENCES grafo_nodos(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS capitulos_coherencia (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        capitulo_id INTEGER NOT NULL UNIQUE,
+        lugar_id INTEGER,
+        personajes_ids TEXT,
+        artefactos_ids TEXT,
+        estado_salud TEXT,
+        secretos_revelados TEXT,
+        notas_continuidad TEXT,
+        FOREIGN KEY (capitulo_id) REFERENCES capitulos(id) ON DELETE CASCADE
+      )
+    ''');
     await _seedDefaultCategorias(db);
     await _seedGlobalStyles(db);
   }
@@ -592,81 +770,44 @@ class AppDatabase {
   static Future<Map<String, dynamic>> getProyectoStats(int proyectoId) async {
     final db = await database;
 
-    // Contar capítulos
-    final manuscritoResult = await db.query(
-      'manuscritos',
-      where: 'proyecto_id = ?',
-      whereArgs: [proyectoId],
-      limit: 1,
-    );
+    final statsCapitulos = await db.rawQuery('''
+      SELECT COUNT(c.id) as capitulos, COALESCE(SUM(c.palabras), 0) as palabras
+      FROM capitulos c
+      JOIN manuscritos m ON c.manuscrito_id = m.id
+      WHERE m.proyecto_id = ? AND c.eliminado_en IS NULL
+    ''', [proyectoId]);
 
     int capituloCount = 0;
     int wordCount = 0;
-
-    if (manuscritoResult.isNotEmpty) {
-      final manuscritoId = manuscritoResult.first['id'];
-      final capitulos = await db.query(
-        'capitulos',
-        where: 'manuscrito_id = ?',
-        whereArgs: [manuscritoId],
-      );
-      capituloCount = capitulos.length;
-
-      // Contar palabras en todos los capítulos
-      for (var cap in capitulos) {
-        final contenido = cap['contenido'] as String? ?? '';
-        String plainText = contenido;
-        if (contenido.trim().startsWith('[') && contenido.trim().endsWith(']')) {
-          try {
-            final List<dynamic> json = jsonDecode(contenido);
-            final sb = StringBuffer();
-            for (var op in json) {
-              if (op is Map && op.containsKey('insert')) {
-                final insertVal = op['insert'];
-                if (insertVal is String) {
-                  sb.write(insertVal);
-                }
-              }
-            }
-            plainText = sb.toString();
-          } catch (e) {
-            // Fallback
-          }
-        }
-        wordCount += plainText
-            .split(RegExp(r'\s+'))
-            .where((w) => w.isNotEmpty)
-            .length;
-      }
+    if (statsCapitulos.isNotEmpty) {
+      capituloCount = (statsCapitulos.first['capitulos'] as num?)?.toInt() ?? 0;
+      wordCount = (statsCapitulos.first['palabras'] as num?)?.toInt() ?? 0;
     }
 
-    // Contar personajes
-    final personajes = await db.query(
-      'personajes',
-      where: 'proyecto_id = ?',
-      whereArgs: [proyectoId],
+    final resPj = await db.rawQuery(
+      'SELECT COUNT(*) as c FROM personajes WHERE proyecto_id = ?',
+      [proyectoId],
     );
+    final countPersonajes = resPj.isNotEmpty ? ((resPj.first['c'] as num?)?.toInt() ?? 0) : 0;
 
-    // Contar lugares
-    final lugares = await db.query(
-      'lugares',
-      where: 'proyecto_id = ?',
-      whereArgs: [proyectoId],
+    final resLug = await db.rawQuery(
+      'SELECT COUNT(*) as c FROM lugares WHERE proyecto_id = ?',
+      [proyectoId],
     );
+    final countLugares = resLug.isNotEmpty ? ((resLug.first['c'] as num?)?.toInt() ?? 0) : 0;
 
-    // Contar eventos de timeline
-    final eventos = await db.query(
-      'eventos_timeline',
-      where: 'proyecto_id = ?',
-      whereArgs: [proyectoId],
+    final resEv = await db.rawQuery(
+      'SELECT COUNT(*) as c FROM eventos_timeline WHERE proyecto_id = ?',
+      [proyectoId],
     );
+    final countEventos = resEv.isNotEmpty ? ((resEv.first['c'] as num?)?.toInt() ?? 0) : 0;
 
     return {
       'capitulos': capituloCount,
       'palabras': wordCount,
-      'personajes': personajes.length,
-      'lugares': lugares.length,
-      'eventos': eventos.length,
+      'personajes': countPersonajes,
+      'lugares': countLugares,
+      'eventos': countEventos,
     };
   }
 
@@ -1112,31 +1253,81 @@ class AppDatabase {
 
   // ── Capítulos ──────────────────────────────────────────
   static Future<List<Map<String, dynamic>>> getCapitulosByManuscrito(
-    int manuscritoId,
-  ) async {
+    int manuscritoId, {
+    bool includeTrash = false,
+  }) async {
     final db = await database;
     return await db.query(
       'capitulos',
-      where: 'manuscrito_id = ?',
+      where: includeTrash
+          ? 'manuscrito_id = ?'
+          : 'manuscrito_id = ? AND eliminado_en IS NULL',
       whereArgs: [manuscritoId],
       orderBy: 'orden ASC',
     );
   }
 
+  static Future<List<Map<String, dynamic>>> getCapitulosPapelera(int manuscritoId) async {
+    final db = await database;
+    return await db.query(
+      'capitulos',
+      where: 'manuscrito_id = ? AND eliminado_en IS NOT NULL',
+      whereArgs: [manuscritoId],
+      orderBy: 'eliminado_en DESC',
+    );
+  }
+
   static Future<int> insertCapitulo(Map<String, dynamic> capitulo) async {
     final db = await database;
-    return await db.insert('capitulos', capitulo);
+    final map = Map<String, dynamic>.from(capitulo);
+    if (map.containsKey('contenido') && !map.containsKey('palabras')) {
+      map['palabras'] = _countWordsStatic(map['contenido'] as String? ?? '');
+    }
+    return await db.insert('capitulos', map);
   }
 
   static Future<int> updateCapitulo(int id, Map<String, dynamic> data) async {
     final db = await database;
-    data['actualizado_en'] = DateTime.now().toIso8601String();
-    return await db.update('capitulos', data, where: 'id = ?', whereArgs: [id]);
+    final map = Map<String, dynamic>.from(data);
+    map['actualizado_en'] = DateTime.now().toIso8601String();
+    if (map.containsKey('contenido') && !map.containsKey('palabras')) {
+      map['palabras'] = _countWordsStatic(map['contenido'] as String? ?? '');
+    }
+    return await db.update('capitulos', map, where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<int> softDeleteCapitulo(int id) async {
+    final db = await database;
+    return await db.update(
+      'capitulos',
+      {'eliminado_en': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<int> restoreCapitulo(int id) async {
+    final db = await database;
+    return await db.update(
+      'capitulos',
+      {'eliminado_en': null},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   static Future<int> deleteCapitulo(int id) async {
     final db = await database;
     return await db.delete('capitulos', where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<int> emptyTrash(int manuscritoId) async {
+    final db = await database;
+    return await db.delete(
+      'capitulos',
+      where: 'manuscrito_id = ? AND eliminado_en IS NOT NULL',
+      whereArgs: [manuscritoId],
+    );
   }
 
   // ── Timeline ──────────────────────────────────────────
@@ -1437,5 +1628,184 @@ class AppDatabase {
   static Future<int> revertEstiloToGlobal(int localStyleId) async {
     final db = await database;
     return await db.delete('estilos', where: 'id = ?', whereArgs: [localStyleId]);
+  }
+
+  // ==========================================
+  // GRAFO DE CONOCIMIENTO NARRATIVO (LORE GRAPH)
+  // ==========================================
+
+  static Future<List<Map<String, dynamic>>> getGrafoNodos(int proyectoId) async {
+    final db = await database;
+    return await db.query(
+      'grafo_nodos',
+      where: 'proyecto_id = ?',
+      whereArgs: [proyectoId],
+      orderBy: 'tipo ASC, nombre ASC',
+    );
+  }
+
+  static Future<int> insertGrafoNodo(Map<String, dynamic> data) async {
+    final db = await database;
+    return await db.insert('grafo_nodos', data);
+  }
+
+  static Future<int> updateGrafoNodo(int id, Map<String, dynamic> data) async {
+    final db = await database;
+    return await db.update('grafo_nodos', data, where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<int> deleteGrafoNodo(int id) async {
+    final db = await database;
+    await db.delete('grafo_aristas', where: 'nodo_origen_id = ? OR nodo_destino_id = ?', whereArgs: [id, id]);
+    return await db.delete('grafo_nodos', where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<List<Map<String, dynamic>>> getGrafoAristas(int proyectoId) async {
+    final db = await database;
+    return await db.query(
+      'grafo_aristas',
+      where: 'proyecto_id = ?',
+      whereArgs: [proyectoId],
+    );
+  }
+
+  static Future<int> insertGrafoArista(Map<String, dynamic> data) async {
+    final db = await database;
+    return await db.insert('grafo_aristas', data);
+  }
+
+  static Future<int> updateGrafoArista(int id, Map<String, dynamic> data) async {
+    final db = await database;
+    return await db.update('grafo_aristas', data, where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<int> deleteGrafoArista(int id) async {
+    final db = await database;
+    return await db.delete('grafo_aristas', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ==========================================
+  // COHERENCIA DE CAPÍTULOS
+  // ==========================================
+
+  static Future<Map<String, dynamic>?> getCapituloCoherencia(int capituloId) async {
+    final db = await database;
+    final results = await db.query(
+      'capitulos_coherencia',
+      where: 'capitulo_id = ?',
+      whereArgs: [capituloId],
+      limit: 1,
+    );
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  static Future<int> upsertCapituloCoherencia(int capituloId, Map<String, dynamic> data) async {
+    final db = await database;
+    final existing = await getCapituloCoherencia(capituloId);
+    if (existing != null) {
+      return await db.update(
+        'capitulos_coherencia',
+        data,
+        where: 'capitulo_id = ?',
+        whereArgs: [capituloId],
+      );
+    } else {
+      return await db.insert('capitulos_coherencia', {
+        ...data,
+        'capitulo_id': capituloId,
+      });
+    }
+  }
+
+  /// Sincroniza entidades existentes (personajes, lugares y relaciones) en el grafo de lore
+  /// si aún no existen nodos para este proyecto.
+  static Future<void> syncGrafoFromProjectEntities(int proyectoId) async {
+    final db = await database;
+    final existingNodes = await getGrafoNodos(proyectoId);
+    if (existingNodes.isNotEmpty) return;
+
+    final personajes = await getPersonajesByProyecto(proyectoId);
+    final Map<int, int> personajeToNodoMap = {};
+
+    for (int i = 0; i < personajes.length; i++) {
+      final p = personajes[i];
+      final angle = (i / (personajes.isEmpty ? 1 : personajes.length)) * 2 * 3.14159;
+      final posX = 500.0 + 260.0 * math.cos(angle);
+      final posY = 500.0 + 260.0 * math.sin(angle);
+
+      final nodoId = await insertGrafoNodo({
+        'proyecto_id': proyectoId,
+        'tipo': 'personaje',
+        'referencia_id': p['id'],
+        'nombre': p['nombre'],
+        'subtitulo': p['rol'] ?? 'Personaje',
+        'descripcion': p['descripcion'] ?? '',
+        'color': '#00F0FF', // Accent cyan
+        'pos_x': posX,
+        'pos_y': posY,
+        'estado': 'activo',
+        'propiedades': jsonEncode({
+          'arquetipo': p['arquetipo'] ?? '',
+          'objetivo': p['objetivo'] ?? '',
+          'imagen_path': p['imagen_path'],
+        }),
+      });
+      personajeToNodoMap[p['id'] as int] = nodoId;
+    }
+
+    // Sincronizar Lugares
+    final lugares = await getLugaresByProyecto(proyectoId);
+    for (int i = 0; i < lugares.length; i++) {
+      final l = lugares[i];
+      final posX = 500.0 + (i % 2 == 0 ? -180.0 : 180.0);
+      final posY = 500.0 + (i % 2 == 0 ? -180.0 : 180.0);
+
+      await insertGrafoNodo({
+        'proyecto_id': proyectoId,
+        'tipo': 'lugar',
+        'referencia_id': l['id'],
+        'nombre': l['nombre'],
+        'subtitulo': l['tipo'] ?? 'Lugar',
+        'descripcion': l['descripcion'] ?? '',
+        'color': '#34C759', // Green
+        'pos_x': posX,
+        'pos_y': posY,
+        'estado': 'activo',
+        'propiedades': jsonEncode({
+          'imagen_path': l['imagen_path'],
+        }),
+      });
+    }
+
+    // Sincronizar Relaciones de personajes
+    for (final p in personajes) {
+      final pId = p['id'] as int;
+      final rels = await getRelacionesByPersonaje(pId);
+      for (final r in rels) {
+        final destPId = r['personaje_destino_id'] as int?;
+        if (destPId != null && personajeToNodoMap.containsKey(pId) && personajeToNodoMap.containsKey(destPId)) {
+          final origenNodoId = personajeToNodoMap[pId]!;
+          final destinoNodoId = personajeToNodoMap[destPId]!;
+          // Evitar aristas duplicadas
+          final exists = await db.query(
+            'grafo_aristas',
+            where: 'proyecto_id = ? AND nodo_origen_id = ? AND nodo_destino_id = ?',
+            whereArgs: [proyectoId, origenNodoId, destinoNodoId],
+          );
+          if (exists.isEmpty) {
+            await insertGrafoArista({
+              'proyecto_id': proyectoId,
+              'nodo_origen_id': origenNodoId,
+              'nodo_destino_id': destinoNodoId,
+              'tipo_relacion': r['tipo'] ?? 'relacion',
+              'etiqueta': r['tipo'] ?? 'Relación',
+              'intensidad': ((r['intensidad'] as num?)?.toDouble() ?? 50.0) / 100.0,
+              'es_bidireccional': 1,
+              'detalles': r['descripcion'] ?? '',
+            });
+          }
+        }
+      }
+    }
   }
 }

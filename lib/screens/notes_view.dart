@@ -393,7 +393,7 @@ class _NotesViewState extends State<NotesView> {
               : ListView.separated(
                   shrinkWrap: true,
                   itemCount: _categorias.length,
-                  separatorBuilder: (_, __) =>
+                  separatorBuilder: (_, _) =>
                       Divider(color: AppColors.separator, height: 1),
                   itemBuilder: (context, index) {
                     final cat = _categorias[index];
@@ -786,10 +786,11 @@ class _NotesViewState extends State<NotesView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Scratchpad de Notas',
+                          'SCRATCHPAD DE NOTAS',
                           style: GoogleFonts.outfit(
-                            fontSize: 32,
+                            fontSize: 28,
                             fontWeight: FontWeight.bold,
+                            letterSpacing: 2.5,
                             color: AppColors.textPrimary,
                           ),
                         ),
@@ -922,92 +923,90 @@ class _NotesViewState extends State<NotesView> {
 
                 // BARRA DE BÚSQUEDA Y FILTROS
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       flex: 2,
-                      child: SizedBox(
-                        height: 65,
-                        child: TextField(
-                          onChanged: (v) => setState(() => _searchQuery = v),
-                          style: GoogleFonts.outfit(
-                            color: AppColors.textPrimary,
+                      child: TextField(
+                        onChanged: (v) => setState(() => _searchQuery = v),
+                        style: GoogleFonts.outfit(
+                          color: AppColors.textPrimary,
+                          fontSize: 13,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Buscar en notas...',
+                          hintStyle: GoogleFonts.outfit(
+                            color: AppColors.textTertiary,
                             fontSize: 13,
                           ),
-                          decoration: InputDecoration(
-                            hintText: 'Buscar en notas...',
-                            hintStyle: GoogleFonts.outfit(
+                          filled: true,
+                          fillColor: AppColors.surface,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 16,
+                          ),
+                          prefixIconConstraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          prefixIcon: Padding(
+                            padding: const EdgeInsets.only(
+                              left: 14,
+                              right: 8,
+                            ),
+                            child: Icon(
+                              Icons.search_rounded,
                               color: AppColors.textTertiary,
-                              fontSize: 13,
+                              size: 18,
                             ),
-                            filled: true,
-                            fillColor: AppColors.surface,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 15,
-                            ),
-                            prefixIconConstraints: const BoxConstraints(
-                              minWidth: 18,
-                              minHeight: 18,
-                            ),
-                            prefixIcon: Padding(
-                              padding: const EdgeInsets.only(
-                                left: 14,
-                                right: 8,
-                              ),
-                              child: Icon(
-                                Icons.search_rounded,
-                                color: AppColors.textTertiary,
-                                size: 18,
-                              ),
-                            ),
-                            suffixIconConstraints: const BoxConstraints(
-                              minWidth: 18,
-                              minHeight: 18,
-                            ),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: GestureDetector(
-                                      onTap: () =>
-                                          setState(() => _searchQuery = ''),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.surfaceLight
-                                              .withValues(alpha: 0.3),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(
-                                          Icons.close_rounded,
-                                          size: 14,
-                                          color: AppColors.textTertiary,
-                                        ),
+                          ),
+                          suffixIconConstraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: GestureDetector(
+                                    onTap: () =>
+                                        setState(() => _searchQuery = ''),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.surfaceLight
+                                            .withValues(alpha: 0.3),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.close_rounded,
+                                        size: 14,
+                                        color: AppColors.textTertiary,
                                       ),
                                     ),
-                                  )
-                                : null,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: AppColors.separator.withValues(
-                                  alpha: 0.6,
-                                ),
+                                  ),
+                                )
+                              : null,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: AppColors.separator.withValues(
+                                alpha: 0.6,
                               ),
                             ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: AppColors.separator.withValues(
-                                  alpha: 0.6,
-                                ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: AppColors.separator.withValues(
+                                alpha: 0.6,
                               ),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: AppColors.accent.withValues(alpha: 0.6),
-                              ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: AppColors.accent.withValues(alpha: 0.6),
                             ),
                           ),
                         ),
@@ -1019,7 +1018,7 @@ class _NotesViewState extends State<NotesView> {
                       child: AppDropdown<String?>(
                         value: _selectedCategory,
                         hint: 'Todas',
-                        height: 55,
+                        height: 48,
                         items: [
                           const AppDropdownItem<String?>(
                             value: null,
@@ -1043,8 +1042,8 @@ class _NotesViewState extends State<NotesView> {
                       child: GestureDetector(
                         onTap: _mostrarDialogoCategorias,
                         child: Container(
-                          width: 44,
-                          height: 55,
+width: 48,
+                          height: 48,
                           decoration: BoxDecoration(
                             color: AppColors.surface,
                             borderRadius: BorderRadius.circular(12),
@@ -1279,10 +1278,10 @@ class _StaticNoteCardState extends State<_StaticNoteCard> {
                       const SizedBox(width: 6),
                       Text(
                         'NOTA',
-                        style: TextStyle(
-                          fontSize: 9,
+                        style: GoogleFonts.outfit(
+                          fontSize: 11,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 1.5,
+                          letterSpacing: 2.5,
                           color: AppColors.textTertiary,
                         ),
                       ),

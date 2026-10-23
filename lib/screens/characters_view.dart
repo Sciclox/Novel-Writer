@@ -533,7 +533,7 @@ class _CharacterDetailScreenState extends State<CharacterDetailScreen> {
                     'intensidad': intensidad.toInt(),
                   });
                   _cargarRelaciones();
-                  Navigator.pop(ctx);
+                  if (ctx.mounted) Navigator.pop(ctx);
                 }
               },
               child: const Text('VINCULAR'),
@@ -966,7 +966,7 @@ class _CharactersViewState extends State<CharactersView> {
                   'intensidad': intensidad.toInt(),
                 });
                 _cargarPersonajes();
-                Navigator.pop(ctx);
+                if (ctx.mounted) Navigator.pop(ctx);
               },
               child: Text('CREAR VÍNCULO', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
             ),
@@ -1477,7 +1477,7 @@ class _SimpleCreationDialogState extends State<_SimpleCreationDialog> {
                 'actualizado_en': DateTime.now().toIso8601String(),
               });
               widget.onSaved();
-              Navigator.pop(context);
+              if (context.mounted) Navigator.pop(context);
             }
           },
           child: const Text('CREAR'),

@@ -297,9 +297,11 @@ class _IdeasViewState extends State<IdeasView> {
                     _cargarDatos();
                     if (ctx.mounted) Navigator.pop(ctx);
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Estas tarjetas ya están conectadas.')),
-                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Estas tarjetas ya están conectadas.')),
+                      );
+                    }
                   }
                 }
               },

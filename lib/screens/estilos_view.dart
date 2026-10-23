@@ -6,6 +6,7 @@ import '../models/novel_style.dart';
 import '../shared/app_theme.dart';
 import '../shared/app_widgets.dart';
 import '../widgets/atajo_recorder.dart';
+import '../widgets/app_color_picker.dart';
 
 class EstilosView extends StatefulWidget {
   final int proyectoId;
@@ -284,10 +285,18 @@ class _EstilosViewState extends State<EstilosView> {
     int? heredaDeId = existing?.heredaDeId;
     bool showAdvanced = false;
 
-    final colorOptions = <String?>[
-      null,
-      '#FFFFFF', '#E8E8E8', '#A5ADBA', '#6C7A89',
-      '#4D96FF', '#6BCB77', '#FFD93D', '#FF6B6B', '#FF6B9D',
+    final textColorPresets = [
+      const ColorPreset(Color(0xFFFFFFFF), 'Blanco'),
+      const ColorPreset(Color(0xFFE8E8E8), 'Gris claro'),
+      const ColorPreset(Color(0xFFA5ADBA), 'Plata'),
+      const ColorPreset(Color(0xFF6C7A89), 'Gris oscuro'),
+      const ColorPreset(Color(0xFF4D96FF), 'Azul'),
+      const ColorPreset(Color(0xFF6BCB77), 'Verde'),
+      const ColorPreset(Color(0xFFFFD93D), 'Amarillo'),
+      const ColorPreset(Color(0xFFFF6B6B), 'Rojo'),
+      const ColorPreset(Color(0xFFFF6B9D), 'Rosa'),
+      const ColorPreset(Color(0xFFBB86FC), 'Violeta'),
+      const ColorPreset(Color(0xFF03DAC6), 'Turquesa'),
     ];
 
     final alignmentIcons = {
@@ -494,13 +503,6 @@ class _EstilosViewState extends State<EstilosView> {
                               selected: fontStyle == 'italic',
                               onTap: () => setDialogState(() => fontStyle = fontStyle == 'italic' ? 'normal' : 'italic'),
                             ),
-                            const SizedBox(width: 8),
-                            _buildStyleChip(
-                              label: 'Cursiva',
-                              icon: Icons.format_italic,
-                              selected: fontStyle == 'italic',
-                              onTap: () => setDialogState(() => fontStyle = fontStyle == 'italic' ? 'normal' : 'italic'),
-                            ),
                           ],
                         ),
                         const SizedBox(height: 16),
@@ -565,40 +567,22 @@ class _EstilosViewState extends State<EstilosView> {
                         // ── Section: Color ──
                         _sectionHeader('Color de texto'),
                         const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: colorOptions.map((hex) {
-                            final isSelected = colorHex == hex;
-                            final isNone = hex == null;
-                            return MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              child: GestureDetector(
-                                onTap: () => setDialogState(() => colorHex = hex),
-                                child: Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: hex != null
-                                        ? Color(int.parse(hex.replaceFirst('#', '0xFF')))
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? AppColors.accent
-                                          : Colors.white.withValues(alpha: 0.12),
-                                      width: isSelected ? 2 : 1,
-                                    ),
-                                  ),
-                                  child: isNone
-                                      ? Center(child: Icon(Icons.close, size: 14, color: Colors.white24))
-                                      : isSelected
-                                          ? Center(child: Icon(Icons.check, size: 14, color: Colors.black87))
-                                          : null,
-                                ),
-                              ),
-                            );
-                          }).toList(),
+                        AppColorPicker(
+                          selectedColor: colorHex != null
+                              ? Color(int.parse(colorHex!.replaceFirst('#', '0xFF')))
+                              : null,
+                          presets: textColorPresets,
+                          allowNull: true,
+                          label: 'Color de texto',
+                          onChanged: (color) {
+                            setDialogState(() {
+                              if (color == null) {
+                                colorHex = null;
+                              } else {
+                                colorHex = '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+                              }
+                            });
+                          },
                         ),
                         const SizedBox(height: 24),
 

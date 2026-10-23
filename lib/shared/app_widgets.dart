@@ -584,8 +584,9 @@ class _AppDropdownState<T> extends State<AppDropdown<T>>
 
     _overlayEntry = OverlayEntry(
       builder: (ctx) {
-        if (!_animCtrl.isAnimating && _animCtrl.isDismissed)
+        if (!_animCtrl.isAnimating && _animCtrl.isDismissed) {
           return const SizedBox.shrink();
+        }
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: _close,

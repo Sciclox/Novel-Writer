@@ -631,7 +631,7 @@ class _EventNodeWidgetState extends State<_EventNodeWidget> with SingleTickerPro
             const cardH = 145.0;
             const cardEdge = 24.0;
 
-            return Container(
+            return SizedBox(
               width: cardW,
               height: h,
               child: Stack(

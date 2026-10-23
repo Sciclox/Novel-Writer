@@ -116,7 +116,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
                               width: 18,
                               height: 18,
                               fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) =>
+                              errorBuilder: (_, _, _) =>
                                   const SizedBox(width: 18),
                             ),
                             const SizedBox(width: 8),

@@ -11,7 +11,22 @@ import '../widgets/editor_widgets.dart';
 import '../shared/app_widgets.dart';
 import '../shared/app_theme.dart';
 import '../models/novel_style.dart';
+import '../models/chapter_model.dart';
+import '../models/character_model.dart';
+import '../models/place_model.dart';
+import '../repositories/chapter_repository.dart';
+import '../repositories/character_repository.dart';
+import '../repositories/place_repository.dart';
+import '../utils/narrative_text_utils.dart';
 import '../widgets/atajo_recorder.dart';
+import '../widgets/app_color_picker.dart';
+import '../widgets/chapter_metadata_dialog.dart';
+import '../widgets/chapter_trash_dialog.dart';
+import '../widgets/word_frequency_dialog.dart';
+import '../widgets/version_diff_dialog.dart';
+import '../widgets/editor_codex_sidebar.dart';
+import '../widgets/editor_coherence_sidebar.dart';
+import '../widgets/global_search_dialog.dart';
 
 class EditorScreen extends StatefulWidget {
   final Map<String, dynamic> proyecto;
@@ -34,6 +49,7 @@ class _EditorScreenState extends State<EditorScreen> {
   );
   final FocusNode _editorFocusNode = FocusNode();
   final FocusNode _fontSizeFocusNode = FocusNode();
+  final ScrollController _editorScrollController = ScrollController();
   bool _isQuillInitialized = false;
   int? _manuscritoId;
   List<Map<String, dynamic>> _notas = [];
@@ -48,8 +64,17 @@ class _EditorScreenState extends State<EditorScreen> {
   Timer? _statsTimer;
   Timer? _prefsSaveTimer;
 
-  // Distraction-Free Mode
+  // Distraction-Free Mode & Writing Mechanics
   bool _distractionFreeMode = false;
+  bool _typewriterMode = false;
+  bool _autoEmDash = true;
+  bool _splitView = false;
+  int _splitCapituloIndex = 0;
+
+  // Codex Inspector & Tabs
+  int _rightSidebarTabIndex = 0; // 0 = Enfoque & Estadísticas, 1 = Codex Rápido
+  List<Character> _codexCharacters = [];
+  List<Place> _codexPlaces = [];
 
   // Find & Replace
   bool _showFindReplace = false;
@@ -89,6 +114,14 @@ class _EditorScreenState extends State<EditorScreen> {
   double _lastSavedLineHeight = 1.8;
 
   bool _kbdHandler(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      if (HardwareKeyboard.instance.isControlPressed &&
+          HardwareKeyboard.instance.isShiftPressed &&
+          event.logicalKey == LogicalKeyboardKey.keyF) {
+        _abrirBusquedaGlobal();
+        return true;
+      }
+    }
     if (!_editorFocusNode.hasFocus) return false;
     if (event is! KeyDownEvent) return false;
     final combo = pressedKeyCombo(event.logicalKey);
@@ -99,6 +132,29 @@ class _EditorScreenState extends State<EditorScreen> {
       return true;
     }
     return false;
+  }
+
+  void _abrirBusquedaGlobal() {
+    GlobalSearchDialog.show(
+      context: context,
+      capitulos: _capitulos,
+      onNavigate: (chapterIndex, offset) {
+        if (chapterIndex != _selectedCapituloIndex) {
+          _cambiarCapitulo(chapterIndex);
+        }
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (_isQuillInitialized) {
+            final docLength = _quillController.document.length;
+            final safeOffset = offset.clamp(0, docLength);
+            _quillController.updateSelection(
+              TextSelection.collapsed(offset: safeOffset),
+              ChangeSource.local,
+            );
+            _editorFocusNode.requestFocus();
+          }
+        });
+      },
+    );
   }
 
   @override
@@ -128,7 +184,7 @@ class _EditorScreenState extends State<EditorScreen> {
   // ── FIX: espera a que se cargue el manuscrito antes de cargar notas
   Future<void> _inicializar() async {
     await _cargarManuscrito();
-    await Future.wait([_cargarNotas(), _cargarTarjetas()]);
+    await Future.wait([_cargarNotas(), _cargarTarjetas(), _cargarCodex()]);
   }
 
   String _colorToHex(Color color) =>
@@ -767,13 +823,42 @@ class _EditorScreenState extends State<EditorScreen> {
             icon: Icons.search_rounded,
             onPressed: () =>
                 setState(() => _showFindReplace = !_showFindReplace),
-            tooltip: 'Buscar y reemplazar',
+            tooltip: 'Buscar y reemplazar (Ctrl+F)',
+          ),
+          _ToolbarButton(
+            icon: Icons.manage_search_rounded,
+            onPressed: _abrirBusquedaGlobal,
+            tooltip: 'Búsqueda global en toda la novela (Ctrl+Shift+F)',
           ),
           _ToolbarButton(
             icon: Icons.fullscreen_exit_rounded,
             onPressed: () =>
                 setState(() => _distractionFreeMode = !_distractionFreeMode),
             tooltip: 'Modo sin distracciones',
+          ),
+          _ToolbarButton(
+            icon: Icons.keyboard_outlined,
+            color: _typewriterMode ? AppColors.accent : null,
+            onPressed: _toggleTypewriterMode,
+            tooltip: _typewriterMode
+                ? 'Modo Máquina de Escribir (Activo)'
+                : 'Modo Máquina de Escribir (Inactivo)',
+          ),
+          _ToolbarButton(
+            icon: Icons.horizontal_rule_rounded,
+            color: _autoEmDash ? AppColors.accent : null,
+            onPressed: () => setState(() => _autoEmDash = !_autoEmDash),
+            tooltip: _autoEmDash
+                ? 'Raya de diálogo automática — (Activo)'
+                : 'Raya de diálogo automática (Inactivo)',
+          ),
+          _ToolbarButton(
+            icon: Icons.vertical_split_rounded,
+            color: _splitView ? AppColors.accent : null,
+            onPressed: _toggleSplitView,
+            tooltip: _splitView
+                ? 'Cerrar Vista Dividida'
+                : 'Abrir Vista Dividida (Split View)',
           ),
           const SizedBox(width: 4),
           _buildAppBarPomodoroTimer(),
@@ -829,25 +914,212 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   QuillController _initQuillController(String content) {
+    QuillController controller;
     if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
       try {
         final json = jsonDecode(content);
-        return QuillController(
+        controller = QuillController(
           document: Document.fromJson(json),
           selection: const TextSelection.collapsed(offset: 0),
         );
       } catch (e) {
-        // Fallback
+        final doc = Document();
+        if (content.isNotEmpty) doc.insert(0, content);
+        controller = QuillController(
+          document: doc,
+          selection: const TextSelection.collapsed(offset: 0),
+        );
+      }
+    } else {
+      final doc = Document();
+      if (content.isNotEmpty) doc.insert(0, content);
+      controller = QuillController(
+        document: doc,
+        selection: const TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    controller.changes.listen((change) {
+      if (_autoEmDash) {
+        _checkAndApplySmartEmDash(controller);
+      }
+    });
+
+    controller.addListener(_handleTypewriterScroll);
+
+    return controller;
+  }
+
+  void _handleTypewriterScroll() {
+    if (!_typewriterMode) return;
+    if (!_editorScrollController.hasClients) return;
+    if (!_isQuillInitialized) return;
+
+    final sel = _quillController.selection;
+    if (!sel.isValid) return;
+
+    final plainText = _quillController.document.toPlainText();
+    final cursor = sel.baseOffset.clamp(0, plainText.length);
+
+    // Number of lines before cursor
+    final textBeforeCursor = plainText.substring(0, cursor);
+    final lineIndex = '\n'.allMatches(textBeforeCursor).length;
+
+    // Approximate vertical height per line
+    final lineHeightPx = (_fontSize * _lineHeight) + 4.0;
+    const headerOffset = 110.0;
+    final cursorY = headerOffset + (lineIndex * lineHeightPx);
+
+    final viewportHeight = _editorScrollController.position.viewportDimension;
+    final maxScroll = _editorScrollController.position.maxScrollExtent;
+
+    final targetScroll = (cursorY - (viewportHeight * 0.45)).clamp(0.0, maxScroll);
+
+    if ((_editorScrollController.offset - targetScroll).abs() > 6.0) {
+      _editorScrollController.animateTo(
+        targetScroll,
+        duration: const Duration(milliseconds: 90),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _toggleTypewriterMode() {
+    setState(() {
+      _typewriterMode = !_typewriterMode;
+    });
+    if (_typewriterMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleTypewriterScroll();
+      });
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 2),
+          backgroundColor: AppColors.surface,
+          content: Row(
+            children: [
+              Icon(Icons.keyboard_outlined, color: AppColors.accent, size: 18),
+              const SizedBox(width: 10),
+              Text(
+                'Modo Máquina de Escribir activado (Línea centrada)',
+                style: GoogleFonts.outfit(color: AppColors.accent, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  void _toggleSplitView() {
+    setState(() {
+      _splitView = !_splitView;
+      if (_splitView) {
+        _autoSelectSecondarySplitChapter();
+      }
+    });
+  }
+
+  void _autoSelectSecondarySplitChapter() {
+    if (_capitulos.length <= 1) {
+      _splitCapituloIndex = 0;
+      return;
+    }
+    // Si estamos en el primer capítulo (ej. Prólogo o Cap 1), mostrar el siguiente (Cap 2)
+    // Si estamos en un capítulo intermedio o final, mostrar el siguiente si existe, sino el anterior
+    if (_selectedCapituloIndex + 1 < _capitulos.length) {
+      _splitCapituloIndex = _selectedCapituloIndex + 1;
+    } else if (_selectedCapituloIndex - 1 >= 0) {
+      _splitCapituloIndex = _selectedCapituloIndex - 1;
+    } else {
+      _splitCapituloIndex = 0;
+    }
+  }
+
+  bool _isApplyingSmartDash = false;
+
+  void _checkAndApplySmartEmDash(QuillController ctrl) {
+    if (_isApplyingSmartDash) return;
+    final sel = ctrl.selection;
+    if (!sel.isCollapsed || sel.baseOffset < 1) return;
+
+    final plainText = ctrl.document.toPlainText();
+    final cursor = sel.baseOffset;
+    if (cursor > plainText.length) return;
+
+    // 1. Transformación instantánea de '--' a '—' (sin necesidad de presionar espacio)
+    if (cursor >= 2) {
+      final last2 = plainText.substring(cursor - 2, cursor);
+      if (last2 == '--') {
+        _isApplyingSmartDash = true;
+        try {
+          ctrl.replaceText(cursor - 2, 2, '—', null);
+          ctrl.updateSelection(
+            TextSelection.collapsed(offset: cursor - 1),
+            ChangeSource.local,
+          );
+        } finally {
+          _isApplyingSmartDash = false;
+        }
+        return;
       }
     }
-    final doc = Document();
-    if (content.isNotEmpty) {
-      doc.insert(0, content);
+
+    // 2. Auto-capitalización de la primera letra tras la raya de diálogo ('—' o '— ')
+    if (cursor >= 2) {
+      final charTyped = plainText.substring(cursor - 1, cursor);
+      final isLowerLetter = RegExp(r'^[a-záéíóúüñ]$').hasMatch(charTyped);
+
+      if (isLowerLetter) {
+        // Directamente después de la raya '—' (ej. '—hola' -> '—Hola')
+        final prev1 = plainText.substring(cursor - 2, cursor - 1);
+        if (prev1 == '—') {
+          _isApplyingSmartDash = true;
+          try {
+            ctrl.replaceText(cursor - 1, 1, charTyped.toUpperCase(), null);
+            ctrl.updateSelection(
+              TextSelection.collapsed(offset: cursor),
+              ChangeSource.local,
+            );
+          } finally {
+            _isApplyingSmartDash = false;
+          }
+          return;
+        }
+
+        // Después de raya y espacio '— ' (ej. '— hola' -> '— Hola')
+        if (cursor >= 3) {
+          final prev2 = plainText.substring(cursor - 3, cursor - 1);
+          if (prev2 == '— ') {
+            _isApplyingSmartDash = true;
+            try {
+              ctrl.replaceText(cursor - 1, 1, charTyped.toUpperCase(), null);
+              ctrl.updateSelection(
+                TextSelection.collapsed(offset: cursor),
+                ChangeSource.local,
+              );
+            } finally {
+              _isApplyingSmartDash = false;
+            }
+            return;
+          }
+        }
+      }
     }
-    return QuillController(
-      document: doc,
-      selection: const TextSelection.collapsed(offset: 0),
-    );
+  }
+
+  Future<void> _cargarCodex() async {
+    final projId = widget.proyecto['id'] as int;
+    final charRepo = CharacterRepository();
+    final placeRepo = PlaceRepository();
+    final chars = await charRepo.getByProject(projId);
+    final places = await placeRepo.getByProject(projId);
+    if (!mounted) return;
+    setState(() {
+      _codexCharacters = chars;
+      _codexPlaces = places;
+    });
   }
 
   void _onTextChanged() {
@@ -902,9 +1174,11 @@ class _EditorScreenState extends State<EditorScreen> {
         _capitulos = List<Map<String, dynamic>>.from(caps);
       }
 
-      // Limpiar títulos por defecto "Capítulo X" si existen
+      // Limpiar títulos por defecto "Capítulo X" sólo si son puramente el marcador genérico sin subtítulo
+      final defaultCapRegex = RegExp(r'^cap[ií]tulo\s+\d+$', caseSensitive: false);
       for (var cap in _capitulos) {
-        if ((cap['titulo'] as String).startsWith('Capítulo ')) {
+        final title = (cap['titulo'] as String?)?.trim() ?? '';
+        if (defaultCapRegex.hasMatch(title)) {
           cap['titulo'] = '';
         }
       }
@@ -1184,7 +1458,15 @@ class _EditorScreenState extends State<EditorScreen> {
         if (_isCapitulosOpen && !_distractionFreeMode)
           Container(
             width: 250,
-            color: AppColors.surface,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border(
+                right: BorderSide(
+                  color: AppColors.separator,
+                  width: 1,
+                ),
+              ),
+            ),
             child: _buildCapitulosSidebar(theme),
           ),
         Expanded(
@@ -1195,7 +1477,15 @@ class _EditorScreenState extends State<EditorScreen> {
         if (_isPanelOpen && !_distractionFreeMode)
           Container(
             width: 270,
-            color: AppColors.surface,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border(
+                left: BorderSide(
+                  color: AppColors.separator,
+                  width: 1,
+                ),
+              ),
+            ),
             child: _buildPanelLateral(theme),
           ),
       ],
@@ -1259,7 +1549,12 @@ class _EditorScreenState extends State<EditorScreen> {
                   icon: Icons.search_rounded,
                   onPressed: () =>
                       setState(() => _showFindReplace = !_showFindReplace),
-                  tooltip: 'Buscar y reemplazar',
+                  tooltip: 'Buscar y reemplazar (Ctrl+F)',
+                ),
+                _ToolbarButton(
+                  icon: Icons.manage_search_rounded,
+                  onPressed: _abrirBusquedaGlobal,
+                  tooltip: 'Búsqueda global en toda la novela (Ctrl+Shift+F)',
                 ),
                 _ToolbarButton(
                   icon: Icons.fullscreen_exit_rounded,
@@ -1267,6 +1562,22 @@ class _EditorScreenState extends State<EditorScreen> {
                     () => _distractionFreeMode = !_distractionFreeMode,
                   ),
                   tooltip: 'Modo sin distracciones',
+                ),
+                _ToolbarButton(
+                  icon: Icons.keyboard_outlined,
+                  color: _typewriterMode ? AppColors.accent : null,
+                  onPressed: _toggleTypewriterMode,
+                  tooltip: _typewriterMode
+                      ? 'Modo Máquina de Escribir (Activo)'
+                      : 'Modo Máquina de Escribir (Inactivo)',
+                ),
+                _ToolbarButton(
+                  icon: Icons.vertical_split_rounded,
+                  color: _splitView ? AppColors.accent : null,
+                  onPressed: _toggleSplitView,
+                  tooltip: _splitView
+                      ? 'Cerrar Vista Dividida'
+                      : 'Abrir Vista Dividida (Split View)',
                 ),
                 _ToolbarDivider(),
                 _ToolbarButton(
@@ -1360,162 +1671,396 @@ class _EditorScreenState extends State<EditorScreen> {
               children: [
                 Positioned.fill(
                   child: Container(
-                    color: AppColors.surface,
-                    padding: const EdgeInsets.fromLTRB(36, 36, 36, 0),
-                    child: Center(
-                      child: GestureDetector(
-                        onTap: () {
-                          if (!_editorFocusNode.hasFocus) {
-                            _editorFocusNode.requestFocus();
-                          }
-                        },
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.text,
-                          child: Container(
-                            constraints: const BoxConstraints(maxWidth: 780),
-                            decoration: BoxDecoration(
-                              color: _pageColor,
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.12),
-                                width: 1.2,
+                    color: AppColors.bg,
+                    padding: EdgeInsets.fromLTRB(_splitView ? 16 : 36, _splitView ? 16 : 36, _splitView ? 16 : 36, 0),
+                    child: _splitView
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _buildActiveEditorCard(isLight),
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.4),
-                                  blurRadius: 40,
-                                  offset: const Offset(0, 12),
-                                ),
-                                BoxShadow(
-                                  color: Colors.white.withValues(alpha: 0.04),
-                                  blurRadius: 20,
-                                  spreadRadius: -5,
-                                ),
-                              ],
-                            ),
-                            padding: const EdgeInsets.all(4),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.05),
-                                  width: 1,
-                                ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildSecondarySplitPane(isLight),
                               ),
-                              padding: const EdgeInsets.fromLTRB(48, 44, 48, 0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    (widget.proyecto['titulo'] ?? 'Tu novela')
-                                        .toString()
-                                        .toUpperCase(),
-                                    style: GoogleFonts.outfit(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: isLight
-                                          ? Colors.black38
-                                          : Colors.white38,
-                                      letterSpacing: 2.5,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  TextField(
-                                    controller: _titleController,
-                                    style: GoogleFonts.getFont(
-                                      _fontFamily,
-                                      fontSize: _fontSize + 4,
-                                      fontWeight: FontWeight.bold,
-                                      color: isLight
-                                          ? Colors.black87
-                                          : Colors.white,
-                                      height: 1.2,
-                                    ),
-                                    showCursor: true,
-                                    cursorWidth: 2.5,
-                                    cursorColor: isLight
-                                        ? Colors.black87
-                                        : const Color(0xFF00F0FF),
-                                    decoration: InputDecoration(
-                                      border: InputBorder.none,
-                                      enabledBorder: InputBorder.none,
-                                      focusedBorder: InputBorder.none,
-                                      disabledBorder: InputBorder.none,
-                                      filled: false,
-                                      fillColor: Colors.transparent,
-                                      hintText: 'Título del capítulo',
-                                      hintStyle: GoogleFonts.getFont(
-                                        _fontFamily,
-                                        fontSize: _fontSize + 4,
-                                        fontWeight: FontWeight.bold,
-                                        height: 1.2,
-                                        color: isLight
-                                            ? Colors.black12
-                                            : AppColors.textTertiary,
-                                      ),
-                                      contentPadding: EdgeInsets.zero,
-                                    ),
-                                    onChanged: (_) =>
-                                        _onTextChanged(), // Trigger auto-save
-                                  ),
-                                  Divider(
-                                    color: isLight
-                                        ? Colors.black12
-                                        : Colors.white10,
-                                    thickness: 1,
-                                  ),
-                                  const SizedBox(height: 24),
-                                  Expanded(
-                                    child: QuillEditor.basic(
-                                      controller: _quillController,
-                                      focusNode: _editorFocusNode,
-                                      config: QuillEditorConfig(
-                                        showCursor: true,
-                                        placeholder:
-                                            'Comienza a escribir tu historia...',
-                                        expands: true,
-                                        padding: EdgeInsets.zero,
-                                        customStyles: DefaultStyles(
-                                          paragraph: DefaultTextBlockStyle(
-                                            GoogleFonts.getFont(
-                                              _fontFamily,
-                                              fontSize: _fontSize,
-                                              height: _lineHeight,
-                                              color: isLight
-                                                  ? const Color(0xFF2C2A25)
-                                                  : Colors.white70,
-                                            ),
-                                            const HorizontalSpacing(0, 0),
-                                            const VerticalSpacing(0, 0),
-                                            const VerticalSpacing(0, 0),
-                                            null,
-                                          ),
-                                          placeHolder: DefaultTextBlockStyle(
-                                            GoogleFonts.getFont(
-                                              _fontFamily,
-                                              fontSize: _fontSize,
-                                              height: _lineHeight,
-                                              color: isLight
-                                                  ? Colors.black12
-                                                  : AppColors.textTertiary,
-                                            ),
-                                            const HorizontalSpacing(0, 0),
-                                            const VerticalSpacing(0, 0),
-                                            const VerticalSpacing(0, 0),
-                                            null,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            ],
+                          )
+                        : Center(
+                            child: _buildActiveEditorCard(isLight),
                           ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveEditorCard(bool isLight) {
+    return GestureDetector(
+      onTap: () {
+        if (!_editorFocusNode.hasFocus) {
+          _editorFocusNode.requestFocus();
+        }
+      },
+      child: MouseRegion(
+        cursor: SystemMouseCursors.text,
+        child: Container(
+          constraints: BoxConstraints(maxWidth: _splitView ? double.infinity : 780),
+          decoration: BoxDecoration(
+            color: _pageColor,
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 40,
+                offset: const Offset(0, 12),
+              ),
+              BoxShadow(
+                color: Colors.white.withValues(alpha: 0.04),
+                blurRadius: 20,
+                spreadRadius: -5,
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(4),
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.05),
+                width: 1,
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(48, 44, 48, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  (widget.proyecto['titulo'] ?? 'Tu novela')
+                      .toString()
+                      .toUpperCase(),
+                  style: GoogleFonts.outfit(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: isLight
+                        ? Colors.black38
+                        : Colors.white38,
+                    letterSpacing: 2.5,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _titleController,
+                  style: GoogleFonts.getFont(
+                    _fontFamily,
+                    fontSize: _fontSize + 4,
+                    fontWeight: FontWeight.bold,
+                    color: isLight
+                        ? Colors.black87
+                        : Colors.white,
+                    height: 1.2,
+                  ),
+                  showCursor: true,
+                  cursorWidth: 2.5,
+                  cursorColor: isLight
+                      ? Colors.black87
+                      : const Color(0xFF00F0FF),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    filled: false,
+                    fillColor: Colors.transparent,
+                    hintText: 'Título del capítulo',
+                    hintStyle: GoogleFonts.getFont(
+                      _fontFamily,
+                      fontSize: _fontSize + 4,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                      color: isLight
+                          ? Colors.black12
+                          : AppColors.textTertiary,
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: (_) =>
+                      _onTextChanged(), // Trigger auto-save
+                ),
+                Divider(
+                  color: isLight
+                      ? Colors.black12
+                      : Colors.white10,
+                  thickness: 1,
+                ),
+                const SizedBox(height: 24),
+                Expanded(
+                  child: QuillEditor.basic(
+                    controller: _quillController,
+                    focusNode: _editorFocusNode,
+                    scrollController: _editorScrollController,
+                    config: QuillEditorConfig(
+                      showCursor: true,
+                      placeholder:
+                          'Comienza a escribir tu historia...',
+                      expands: true,
+                      padding: EdgeInsets.fromLTRB(
+                        0,
+                        0,
+                        0,
+                        _typewriterMode ? 600 : 40,
+                      ),
+                      scrollBottomInset: _typewriterMode ? 600 : 0,
+                      customStyles: DefaultStyles(
+                        paragraph: DefaultTextBlockStyle(
+                          GoogleFonts.getFont(
+                            _fontFamily,
+                            fontSize: _fontSize,
+                            height: _lineHeight,
+                            color: isLight
+                                ? const Color(0xFF2C2A25)
+                                : Colors.white70,
+                          ),
+                          const HorizontalSpacing(0, 0),
+                          const VerticalSpacing(0, 0),
+                          const VerticalSpacing(0, 0),
+                          null,
+                        ),
+                        placeHolder: DefaultTextBlockStyle(
+                          GoogleFonts.getFont(
+                            _fontFamily,
+                            fontSize: _fontSize,
+                            height: _lineHeight,
+                            color: isLight
+                                ? Colors.black12
+                                : AppColors.textTertiary,
+                          ),
+                          const HorizontalSpacing(0, 0),
+                          const VerticalSpacing(0, 0),
+                          const VerticalSpacing(0, 0),
+                          null,
                         ),
                       ),
                     ),
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSecondarySplitPane(bool isLight) {
+    if (_capitulos.isEmpty) return const SizedBox.shrink();
+    final safeIndex = _splitCapituloIndex.clamp(0, _capitulos.length - 1);
+    final splitCap = _capitulos[safeIndex];
+    final splitTipo = splitCap['tipo']?.toString() ?? 'capitulo';
+    final splitTitle = splitCap['titulo']?.toString().trim().isNotEmpty == true
+        ? splitCap['titulo'].toString().trim()
+        : (splitTipo == 'prologo' ? 'Prólogo' : 'Capítulo ${safeIndex + 1}');
+
+    // Parse plain text from quill JSON or raw string
+    final rawContent = splitCap['contenido']?.toString() ?? '';
+    String plain = rawContent;
+    if (rawContent.trim().startsWith('[') && rawContent.trim().endsWith(']')) {
+      try {
+        final List<dynamic> json = jsonDecode(rawContent);
+        final sb = StringBuffer();
+        for (var op in json) {
+          if (op is Map && op.containsKey('insert')) {
+            final ins = op['insert'];
+            if (ins is String) sb.write(ins);
+          }
+        }
+        plain = sb.toString();
+      } catch (_) {}
+    }
+
+    final splitWords = _countWords(plain);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _pageColor,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.12),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 40,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(28, 20, 28, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Split Pane Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_stories_outlined, size: 14, color: AppColors.accent),
+                    const SizedBox(width: 6),
+                    Text(
+                      'VISTA PARALELA',
+                      style: GoogleFonts.outfit(
+                        color: AppColors.accent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Botón rápido capítulo anterior
+              IconButton(
+                icon: const Icon(Icons.chevron_left_rounded, size: 18),
+                color: safeIndex > 0 ? AppColors.textSecondary : Colors.white24,
+                onPressed: safeIndex > 0
+                    ? () => setState(() => _splitCapituloIndex = safeIndex - 1)
+                    : null,
+                tooltip: 'Capítulo anterior',
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                padding: EdgeInsets.zero,
+              ),
+              // Botón rápido capítulo siguiente
+              IconButton(
+                icon: const Icon(Icons.chevron_right_rounded, size: 18),
+                color: safeIndex < _capitulos.length - 1 ? AppColors.textSecondary : Colors.white24,
+                onPressed: safeIndex < _capitulos.length - 1
+                    ? () => setState(() => _splitCapituloIndex = safeIndex + 1)
+                    : null,
+                tooltip: 'Capítulo siguiente',
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                padding: EdgeInsets.zero,
+              ),
+              const Spacer(),
+              // Selector desplegable de capítulo
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: safeIndex,
+                    dropdownColor: AppColors.surface,
+                    style: GoogleFonts.outfit(color: AppColors.textPrimary, fontSize: 12),
+                    icon: Icon(Icons.arrow_drop_down, color: AppColors.accent, size: 18),
+                    isDense: true,
+                    items: List.generate(_capitulos.length, (i) {
+                      final c = _capitulos[i];
+                      final tType = c['tipo']?.toString() ?? 'capitulo';
+                      final defaultName = tType == 'prologo' ? 'Prólogo' : 'Capítulo ${i + 1}';
+                      final t = c['titulo']?.toString().trim().isNotEmpty == true
+                          ? '${c['titulo']}'
+                          : defaultName;
+                      final isCurrentEditing = i == _selectedCapituloIndex;
+
+                      return DropdownMenuItem<int>(
+                        value: i,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              t,
+                              style: GoogleFonts.outfit(
+                                fontSize: 12,
+                                color: isCurrentEditing ? AppColors.accent : AppColors.textPrimary,
+                                fontWeight: isCurrentEditing ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                            if (isCurrentEditing) ...[
+                              const SizedBox(width: 6),
+                              Text(
+                                '(En edición)',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 10,
+                                  color: AppColors.accent.withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    }),
+                    onChanged: (newIdx) {
+                      if (newIdx != null) {
+                        setState(() => _splitCapituloIndex = newIdx);
+                      }
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: Icon(Icons.close_rounded, size: 18, color: AppColors.textTertiary),
+                onPressed: () => setState(() => _splitView = false),
+                tooltip: 'Cerrar Vista Dividida',
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                padding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Divider(color: isLight ? Colors.black12 : Colors.white10),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  splitTitle,
+                  style: GoogleFonts.getFont(
+                    _fontFamily,
+                    fontSize: _fontSize + 2,
+                    fontWeight: FontWeight.bold,
+                    color: isLight ? Colors.black87 : Colors.white,
+                  ),
+                ),
+              ),
+              Text(
+                '$splitWords palabras',
+                style: GoogleFonts.outfit(
+                  color: AppColors.textTertiary,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: SingleChildScrollView(
+              child: SelectableText(
+                plain.trim().isEmpty ? 'Este capítulo aún no tiene contenido escrito.' : plain,
+                style: GoogleFonts.getFont(
+                  _fontFamily,
+                  fontSize: _fontSize,
+                  height: _lineHeight,
+                  color: isLight ? const Color(0xFF2C2A25) : Colors.white70,
+                ),
+              ),
             ),
           ),
         ],
@@ -1571,174 +2116,521 @@ class _EditorScreenState extends State<EditorScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'HERRAMIENTAS',
-                    style: GoogleFonts.outfit(
-                      color: AppColors.textPrimary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Tooltip(
-                          message: 'Agregar nueva nota adhesiva',
-                          child: _GlassButton(
-                            icon: Icons.sticky_note_2_rounded,
-                            label: 'NOTA',
-                            onPressed: _agregarNota,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Tooltip(
-                          message: 'Agregar nueva tarjeta de idea',
-                          child: _GlassButton(
-                            icon: Icons.post_add_rounded,
-                            label: 'TARJETA',
-                            onPressed: _agregarTarjeta,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _buildPageColorSection(),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Divider(color: AppColors.separator),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'ENFOQUE & POMODORO',
-                    style: GoogleFonts.outfit(
-                      color: AppColors.textTertiary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ),
-                _buildPomodoroSection(theme),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Divider(color: AppColors.separator),
-                ),
-                const SizedBox(height: 12),
-                _buildSessionGoalSection(theme),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Divider(color: AppColors.separator),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'ESTADÍSTICAS',
-                    style: GoogleFonts.outfit(
-                      color: AppColors.textTertiary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.05),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        _StatItem(
-                          icon: Icons.text_fields_rounded,
-                          label: 'Palabras',
-                          value: '$_wordCount',
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 10),
-                          child: Divider(height: 1, color: Colors.white10),
-                        ),
-                        _StatItem(
-                          icon: Icons.format_size_rounded,
-                          label: 'Caracteres',
-                          value: '$_charCount',
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 10),
-                          child: Divider(height: 1, color: Colors.white10),
-                        ),
-                        _StatItem(
-                          icon: Icons.sticky_note_2_rounded,
-                          label: 'Notas',
-                          value: '${_notas.length}',
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 10),
-                          child: Divider(height: 1, color: Colors.white10),
-                        ),
-                        _StatItem(
-                          icon: Icons.grid_view_rounded,
-                          label: 'Tarjetas',
-                          value: '${_tarjetas.length}',
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ],
-            ),
+        // Selector de Pestañas
+        Container(
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.separator)),
           ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildSidebarTab(
+                  index: 0,
+                  icon: Icons.timer_outlined,
+                  label: 'Enfoque',
+                ),
+              ),
+              const SizedBox(width: 3),
+              Expanded(
+                child: _buildSidebarTab(
+                  index: 1,
+                  icon: Icons.people_outline_rounded,
+                  label: 'Codex',
+                ),
+              ),
+              const SizedBox(width: 3),
+              Expanded(
+                child: _buildSidebarTab(
+                  index: 2,
+                  icon: Icons.analytics_outlined,
+                  label: 'Métricas',
+                ),
+              ),
+              const SizedBox(width: 3),
+              Expanded(
+                child: _buildSidebarTab(
+                  index: 3,
+                  icon: Icons.hub_outlined,
+                  label: 'Coherencia',
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        Expanded(
+          child: _rightSidebarTabIndex == 1
+              ? EditorCodexSidebar(
+                  characters: _codexCharacters,
+                  places: _codexPlaces,
+                )
+              : _rightSidebarTabIndex == 2
+                  ? _buildMetricasTab(theme)
+                  : _rightSidebarTabIndex == 3
+                      ? EditorCoherenceSidebar(
+                          proyectoId: widget.proyecto['id'] as int,
+                          capitulo: _capitulos.isNotEmpty && _selectedCapituloIndex < _capitulos.length
+                              ? _capitulos[_selectedCapituloIndex]
+                              : null,
+                        )
+                      : _buildEnfoqueTab(theme),
         ),
       ],
     );
   }
 
-  static const _pageColors = [
-    Color(0xFFFFFFFF), // Blanco
-    Color(0xFFFFF8E0), // Crema
-    Color(0xFFF5E6C8), // Sepia
-    Color(0xFFF0F0F0), // Gris suave
-    Color(0xFFE8F0FE), // Azul claro
-    Color(0xFFE8F5E9), // Verde claro
-    Color(0xFF2C2C2C), // Oscuro
+  Widget _buildSidebarTab({required int index, required IconData icon, required String label}) {
+    final isSelected = _rightSidebarTabIndex == index;
+    return InkWell(
+      onTap: () => setState(() => _rightSidebarTabIndex = index),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.accent.withValues(alpha: 0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? AppColors.accent.withValues(alpha: 0.4) : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: isSelected ? AppColors.accent : AppColors.textTertiary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: GoogleFonts.outfit(
+                color: isSelected ? AppColors.accent : AppColors.textTertiary,
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricasTab(ThemeData theme) {
+    final readingTime = NarrativeTextUtils.estimateReadingTime(_wordCount);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ANÁLISIS DE LECTURA',
+            style: GoogleFonts.outfit(
+              color: AppColors.textTertiary,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+            ),
+            child: Column(
+              children: [
+                _StatItem(
+                  icon: Icons.timer_rounded,
+                  label: 'Tiempo de Lectura',
+                  value: readingTime,
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(height: 1, color: Colors.white10),
+                ),
+                _StatItem(
+                  icon: Icons.text_fields_rounded,
+                  label: 'Palabras en Capítulo',
+                  value: '$_wordCount',
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(height: 1, color: Colors.white10),
+                ),
+                _StatItem(
+                  icon: Icons.format_size_rounded,
+                  label: 'Caracteres',
+                  value: '$_charCount',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Botones de acción avanzada
+          Text(
+            'HERRAMIENTAS DE ESTILO',
+            style: GoogleFonts.outfit(
+              color: AppColors.textTertiary,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: () {
+              WordFrequencyDialog.show(
+                context,
+                _quillController.document.toPlainText(),
+                _wordCount,
+              );
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.analytics_rounded, color: AppColors.accent, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Analizar Repeticiones',
+                          style: GoogleFonts.outfit(
+                            color: AppColors.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Detecta palabras sobreutilizadas',
+                          style: GoogleFonts.outfit(
+                            color: AppColors.textTertiary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary, size: 18),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          InkWell(
+            onTap: _abrirBusquedaGlobal,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.manage_search_rounded, color: AppColors.accent, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Búsqueda Global',
+                          style: GoogleFonts.outfit(
+                            color: AppColors.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'En toda la novela (Ctrl+Shift+F)',
+                          style: GoogleFonts.outfit(
+                            color: AppColors.textTertiary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary, size: 18),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          InkWell(
+            onTap: () async {
+              if (_capitulos.isEmpty) return;
+              final currentCap = _capitulos[_selectedCapituloIndex];
+              final snapshots = await AppDatabase.getCapituloVersiones(currentCap['id']);
+              if (!mounted) return;
+              if (snapshots.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    backgroundColor: AppColors.surface,
+                    content: Text(
+                      'No hay versiones históricas guardadas para este capítulo.',
+                      style: GoogleFonts.outfit(color: AppColors.textPrimary),
+                    ),
+                  ),
+                );
+                return;
+              }
+              final latest = snapshots.first;
+              VersionDiffDialog.show(
+                context: context,
+                currentText: _quillController.document.toPlainText(),
+                snapshotContent: latest['contenido'] ?? '',
+                snapshotMotivo: latest['motivo'] ?? 'Guardado automático',
+                snapshotFecha: latest['creado_en'] ?? '',
+              );
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.separator),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.compare_arrows_rounded, color: AppColors.textSecondary, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Comparar Revisiones (Diff)',
+                          style: GoogleFonts.outfit(
+                            color: AppColors.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Ver diferencias con última versión guardada',
+                          style: GoogleFonts.outfit(
+                            color: AppColors.textTertiary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary, size: 18),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnfoqueTab(ThemeData theme) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'HERRAMIENTAS',
+              style: GoogleFonts.outfit(
+                color: AppColors.textPrimary,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Tooltip(
+                    message: 'Agregar nueva nota adhesiva',
+                    child: _GlassButton(
+                      icon: Icons.sticky_note_2_rounded,
+                      label: 'NOTA',
+                      onPressed: _agregarNota,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Tooltip(
+                    message: 'Agregar nueva tarjeta de idea',
+                    child: _GlassButton(
+                      icon: Icons.post_add_rounded,
+                      label: 'TARJETA',
+                      onPressed: _agregarTarjeta,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildPageColorSection(),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Divider(color: AppColors.separator),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'ENFOQUE & POMODORO',
+              style: GoogleFonts.outfit(
+                color: AppColors.textTertiary,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          _buildPomodoroSection(theme),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Divider(color: AppColors.separator),
+          ),
+          const SizedBox(height: 12),
+          _buildSessionGoalSection(theme),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Divider(color: AppColors.separator),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'ESTADÍSTICAS',
+              style: GoogleFonts.outfit(
+                color: AppColors.textTertiary,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.05),
+                ),
+              ),
+              child: Column(
+                children: [
+                  _StatItem(
+                    icon: Icons.text_fields_rounded,
+                    label: 'Palabras',
+                    value: '$_wordCount',
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Divider(height: 1, color: Colors.white10),
+                  ),
+                  _StatItem(
+                    icon: Icons.format_size_rounded,
+                    label: 'Caracteres',
+                    value: '$_charCount',
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Divider(height: 1, color: Colors.white10),
+                  ),
+                  _StatItem(
+                    icon: Icons.sticky_note_2_rounded,
+                    label: 'Notas',
+                    value: '${_notas.length}',
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Divider(height: 1, color: Colors.white10),
+                  ),
+                  _StatItem(
+                    icon: Icons.grid_view_rounded,
+                    label: 'Tarjetas',
+                    value: '${_tarjetas.length}',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Divider(color: AppColors.separator),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'ESTILOS',
+              style: GoogleFonts.outfit(
+                color: AppColors.textTertiary,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildEstilosSection(),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  static const _pageColorPresets = [
+    ColorPreset(Color(0xFFFFFFFF), 'Blanco'),
+    ColorPreset(Color(0xFFFFF8E0), 'Crema'),
+    ColorPreset(Color(0xFFF5E6C8), 'Sepia'),
+    ColorPreset(Color(0xFFF0F0F0), 'Gris suave'),
+    ColorPreset(Color(0xFFE8F0FE), 'Azul claro'),
+    ColorPreset(Color(0xFFE8F5E9), 'Verde claro'),
+    ColorPreset(Color(0xFF2C2C2C), 'Oscuro'),
+    ColorPreset(Color(0xFF1A1A2E), 'Medianoche'),
+    ColorPreset(Color(0xFFFDE8E8), 'Rosa suave'),
   ];
 
   Widget _buildPageColorSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
             'COLOR DE HOJA',
             style: GoogleFonts.outfit(
               color: AppColors.textTertiary,
@@ -1747,56 +2639,19 @@ class _EditorScreenState extends State<EditorScreen> {
               letterSpacing: 1.5,
             ),
           ),
-        ),
-        const SizedBox(height: 10),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _pageColors.map((color) {
-              final isSelected = _pageColor == color;
-              return GestureDetector(
-                onTap: () => setState(() => _pageColor = color),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isSelected
-                          ? AppColors.accent
-                          : color.computeLuminance() > 0.5
-                          ? Colors.black.withValues(alpha: 0.12)
-                          : Colors.white.withValues(alpha: 0.25),
-                      width: isSelected ? 2 : 1,
-                    ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: AppColors.accent.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: isSelected
-                      ? Icon(
-                          Icons.check_rounded,
-                          size: 16,
-                          color: color.computeLuminance() > 0.5
-                              ? Colors.black87
-                              : Colors.white,
-                        )
-                      : null,
-                ),
-              );
-            }).toList(),
+          const SizedBox(height: 10),
+          AppColorPicker(
+            selectedColor: _pageColor,
+            presets: _pageColorPresets,
+            label: 'COLOR DE HOJA',
+            onChanged: (color) {
+              if (color != null) {
+                setState(() => _pageColor = color);
+              }
+            },
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -2490,6 +3345,15 @@ class _EditorScreenState extends State<EditorScreen> {
                   ),
                 ],
               ),
+              IconButton(
+                icon: Icon(
+                  Icons.auto_delete_outlined,
+                  size: 18,
+                  color: AppColors.textTertiary,
+                ),
+                tooltip: 'Papelera del manuscrito',
+                onPressed: _abrirPapelera,
+              ),
             ],
           ),
         ),
@@ -2549,13 +3413,18 @@ class _EditorScreenState extends State<EditorScreen> {
                 child: _CapituloSidebarItem(
                   label: label,
                   title: customTitle,
+                  words: (cap['palabras'] as num?)?.toInt() ?? 0,
+                  estado: cap['estado']?.toString() ?? 'borrador',
+                  povName: _getPovName(cap['pov_personaje_id']),
+                  metaPalabras: (cap['meta_palabras'] as num?)?.toInt() ?? 0,
                   isSelected: isSelected,
                   onTap: () {
                     if (_selectedCapituloIndex != index) {
                       _cambiarCapitulo(index);
                     }
                   },
-                  onDelete: isSelected && _capitulos.length > 1
+                  onEditMetadata: () => _openChapterMetadata(index),
+                  onDelete: _capitulos.length > 1
                       ? () => _eliminarCapitulo(index)
                       : null,
                 ),
@@ -2579,6 +3448,12 @@ class _EditorScreenState extends State<EditorScreen> {
       _titleController.text = currentCap['titulo'] ?? '';
       _lastSavedText = jsonEncode(_quillController.document.toDelta().toJson());
       _lastSavedTitle = _titleController.text;
+
+      // Si la vista dividida está activa y apunta al mismo capítulo que ahora se está editando,
+      // ajustar automáticamente la vista secundaria al capítulo contiguo
+      if (_splitView && _splitCapituloIndex == _selectedCapituloIndex) {
+        _autoSelectSecondarySplitChapter();
+      }
     });
     _updateStatsImmediate();
   }
@@ -2620,74 +3495,94 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // Se elimina _renombrarCapitulo con popup, ahora se usa el TextField en el editor
 
-  Future<void> _eliminarCapitulo(int index) async {
-    if (_capitulos.length <= 1) return; // Must have at least one chapter
-    final cap = _capitulos[index];
-    final confirm = await showDialog<bool>(
+  String? _getPovName(dynamic povId) {
+    if (povId == null) return null;
+    final int? id = povId is num ? povId.toInt() : int.tryParse(povId.toString());
+    if (id == null) return null;
+    final match = _codexCharacters.where((c) => c.id == id).firstOrNull;
+    return match?.nombre;
+  }
+
+  Future<void> _openChapterMetadata(int index) async {
+    final capMap = _capitulos[index];
+    final chapter = Chapter.fromMap(capMap);
+    await ChapterMetadataDialog.show(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card,
-        title: Text(
-          'Eliminar Capítulo',
-          style: GoogleFonts.outfit(color: AppColors.red),
-        ),
+      chapter: chapter,
+      characters: _codexCharacters,
+      onSave: (updated) async {
+        final repo = ChapterRepository();
+        await repo.updateChapter(updated);
+        setState(() {
+          _capitulos[index] = updated.toMap();
+          if (index == _selectedCapituloIndex) {
+            _titleController.text = updated.titulo;
+          }
+        });
+      },
+    );
+  }
+
+  Future<void> _abrirPapelera() async {
+    if (_manuscritoId == null) return;
+    await ChapterTrashDialog.show(
+      context: context,
+      manuscritoId: _manuscritoId!,
+      onRestored: () async {
+        final caps = await AppDatabase.getCapitulosByManuscrito(_manuscritoId!);
+        setState(() {
+          _capitulos = List<Map<String, dynamic>>.from(caps);
+          if (_selectedCapituloIndex >= _capitulos.length) {
+            _selectedCapituloIndex = _capitulos.isEmpty ? 0 : _capitulos.length - 1;
+          }
+        });
+      },
+    );
+  }
+
+  Future<void> _eliminarCapitulo(int index) async {
+    if (_capitulos.length <= 1) return;
+    final cap = _capitulos[index];
+    final title = cap['titulo']?.toString().trim().isNotEmpty == true
+        ? cap['titulo'].toString().trim()
+        : 'Capítulo';
+    final deletedId = cap['id'] as int;
+
+    await AppDatabase.softDeleteCapitulo(deletedId);
+    setState(() {
+      _capitulos.removeAt(index);
+      if (_selectedCapituloIndex >= _capitulos.length) {
+        _selectedCapituloIndex = _capitulos.length - 1;
+      } else if (index < _selectedCapituloIndex) {
+        _selectedCapituloIndex--;
+      }
+      _cambiarCapitulo(_selectedCapituloIndex);
+    });
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.surface,
         content: Text(
-          '¿Estás seguro de eliminar "${cap['titulo']}"? Todo el contenido se perderá.',
-          style: GoogleFonts.outfit(
-            color: AppColors.textSecondary,
-            fontSize: 14,
-            height: 1.5,
-          ),
+          '"$title" se movió a la papelera',
+          style: GoogleFonts.outfit(color: AppColors.textPrimary),
         ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.textTertiary,
-              side: BorderSide(
-                color: AppColors.textTertiary.withValues(alpha: 0.3),
-              ),
-            ),
-            child: Text(
-              'CANCELAR',
-              style: GoogleFonts.outfit(
-                color: AppColors.textTertiary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.red,
-              side: BorderSide(color: AppColors.red),
-            ),
-            child: Text(
-              'ELIMINAR',
-              style: GoogleFonts.outfit(
-                color: AppColors.red,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
+        action: SnackBarAction(
+          label: 'DESHACER',
+          textColor: AppColors.accent,
+          onPressed: () async {
+            await AppDatabase.restoreCapitulo(deletedId);
+            if (_manuscritoId != null) {
+              final caps = await AppDatabase.getCapitulosByManuscrito(_manuscritoId!);
+              setState(() {
+                _capitulos = List<Map<String, dynamic>>.from(caps);
+              });
+            }
+          },
+        ),
       ),
     );
-
-    if (confirm == true) {
-      await AppDatabase.deleteCapitulo(cap['id']);
-      setState(() {
-        _capitulos.removeAt(index);
-        if (_selectedCapituloIndex >= _capitulos.length) {
-          _selectedCapituloIndex = _capitulos.length - 1;
-        } else if (index < _selectedCapituloIndex) {
-          _selectedCapituloIndex--;
-        }
-        _cambiarCapitulo(
-          _selectedCapituloIndex,
-        ); // Recargar el contenido del que quedó
-      });
-    }
   }
 
   Future<void> _guardarOrdenCapitulos() async {
@@ -2729,10 +3624,25 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
           const Spacer(),
           _ToolbarButton(
+            icon: Icons.keyboard_outlined,
+            color: _typewriterMode ? AppColors.accent : null,
+            onPressed: _toggleTypewriterMode,
+            tooltip: _typewriterMode
+                ? 'Modo Máquina de Escribir (Activo)'
+                : 'Modo Máquina de Escribir (Inactivo)',
+          ),
+          const SizedBox(width: 4),
+          _ToolbarButton(
             icon: Icons.search_rounded,
             onPressed: () =>
                 setState(() => _showFindReplace = !_showFindReplace),
-            tooltip: 'Buscar y reemplazar',
+            tooltip: 'Buscar y reemplazar (Ctrl+F)',
+          ),
+          const SizedBox(width: 4),
+          _ToolbarButton(
+            icon: Icons.manage_search_rounded,
+            onPressed: _abrirBusquedaGlobal,
+            tooltip: 'Búsqueda global en toda la novela (Ctrl+Shift+F)',
           ),
           const SizedBox(width: 4),
           _ToolbarButton(
@@ -3069,6 +3979,7 @@ class _EditorScreenState extends State<EditorScreen> {
     _fontSizeController.dispose();
     _editorFocusNode.dispose();
     _fontSizeFocusNode.dispose();
+    _editorScrollController.dispose();
     if (_isQuillInitialized) {
       _quillController.dispose();
     }
@@ -3079,15 +3990,25 @@ class _EditorScreenState extends State<EditorScreen> {
 class _CapituloSidebarItem extends StatefulWidget {
   final String label;
   final String title;
+  final int words;
+  final String estado;
+  final String? povName;
+  final int metaPalabras;
   final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback onEditMetadata;
   final VoidCallback? onDelete;
 
   const _CapituloSidebarItem({
     required this.label,
     required this.title,
+    this.words = 0,
+    this.estado = 'borrador',
+    this.povName,
+    this.metaPalabras = 0,
     required this.isSelected,
     required this.onTap,
+    required this.onEditMetadata,
     this.onDelete,
   });
 
@@ -3098,8 +4019,37 @@ class _CapituloSidebarItem extends StatefulWidget {
 class _CapituloSidebarItemState extends State<_CapituloSidebarItem> {
   bool _isHovered = false;
 
+  Color _getStatusColor(String st) {
+    switch (st) {
+      case 'completado':
+        return const Color(0xFF4CAF50);
+      case 'en_revision':
+        return const Color(0xFFFFB300);
+      case 'reescritura':
+        return const Color(0xFFFF7043);
+      default:
+        return const Color(0xFF9E9E9E);
+    }
+  }
+
+  String _getStatusLabel(String st) {
+    switch (st) {
+      case 'completado':
+        return 'Listo';
+      case 'en_revision':
+        return 'Revisión';
+      case 'reescritura':
+        return 'Reescribir';
+      default:
+        return 'Borrador';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final statusColor = _getStatusColor(widget.estado);
+    final statusLabel = _getStatusLabel(widget.estado);
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -3110,7 +4060,7 @@ class _CapituloSidebarItemState extends State<_CapituloSidebarItem> {
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeInOut,
           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             gradient: widget.isSelected
@@ -3142,11 +4092,12 @@ class _CapituloSidebarItemState extends State<_CapituloSidebarItem> {
             ),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 width: 3,
-                height: widget.isSelected ? 16 : 0,
+                height: widget.isSelected ? 24 : 0,
                 margin: EdgeInsets.only(right: widget.isSelected ? 8 : 0),
                 decoration: BoxDecoration(
                   color: AppColors.accent,
@@ -3164,19 +4115,43 @@ class _CapituloSidebarItemState extends State<_CapituloSidebarItem> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      widget.label,
-                      style: GoogleFonts.outfit(
-                        color: widget.isSelected
-                            ? AppColors.accent
-                            : _isHovered
-                            ? AppColors.textSecondary
-                            : AppColors.textTertiary,
-                        fontSize: 11,
-                        fontWeight: widget.isSelected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            widget.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.outfit(
+                              color: widget.isSelected
+                                  ? AppColors.accent
+                                  : _isHovered
+                                  ? AppColors.textSecondary
+                                  : AppColors.textTertiary,
+                              fontSize: 11,
+                              fontWeight: widget.isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            statusLabel,
+                            style: GoogleFonts.outfit(
+                              color: statusColor,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     if (widget.title.isNotEmpty) ...[
                       const SizedBox(height: 2),
@@ -3195,23 +4170,83 @@ class _CapituloSidebarItemState extends State<_CapituloSidebarItem> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
+                    if (widget.povName != null && widget.povName!.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.person_pin_circle_outlined,
+                            size: 11,
+                            color: AppColors.accent.withValues(alpha: 0.85),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              widget.povName!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.outfit(
+                                color: AppColors.accent.withValues(alpha: 0.85),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Text(
+                          '${widget.words} palabras',
+                          style: GoogleFonts.outfit(
+                            color: AppColors.textTertiary,
+                            fontSize: 10,
+                          ),
+                        ),
+                        if (widget.metaPalabras > 0) ...[
+                          Text(
+                            ' / ${widget.metaPalabras}',
+                            style: GoogleFonts.outfit(
+                              color: AppColors.textTertiary,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),
-              if (widget.onDelete != null)
+              if (_isHovered || widget.isSelected) ...[
                 IconButton(
                   icon: Icon(
-                    Icons.delete_rounded,
+                    Icons.tune_rounded,
                     size: 14,
                     color: AppColors.textTertiary,
                   ),
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: widget.onDelete,
-                  splashRadius: 16,
-                  hoverColor: Colors.redAccent.withValues(alpha: 0.1),
-                  tooltip: 'Eliminar Capítulo',
+                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                  onPressed: widget.onEditMetadata,
+                  splashRadius: 14,
+                  tooltip: 'Detalles y metadatos',
                 ),
+                if (widget.onDelete != null)
+                  IconButton(
+                    icon: Icon(
+                      Icons.delete_rounded,
+                      size: 14,
+                      color: AppColors.textTertiary,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                    onPressed: widget.onDelete,
+                    splashRadius: 14,
+                    hoverColor: Colors.redAccent.withValues(alpha: 0.1),
+                    tooltip: 'Mover a la papelera',
+                  ),
+              ],
             ],
           ),
         ),
@@ -3238,17 +4273,19 @@ class _ToolbarButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
   final String tooltip;
+  final Color? color;
 
   const _ToolbarButton({
     required this.icon,
     required this.onPressed,
     required this.tooltip,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: Icon(icon, size: 18, color: AppColors.textSecondary),
+      icon: Icon(icon, size: 18, color: color ?? AppColors.textSecondary),
       onPressed: onPressed,
       tooltip: tooltip,
       padding: EdgeInsets.zero,

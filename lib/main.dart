@@ -52,9 +52,10 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  final GlobalKey<HomeScreenState> _homeKey = GlobalKey<HomeScreenState>();
   bool _isFullScreen = false;
 
-  HomeScreenState? get _homeState => _navigatorKey.currentContext?.findAncestorStateOfType<HomeScreenState>();
+  HomeScreenState? get _homeState => _homeKey.currentState;
 
   @override
   Widget build(BuildContext context) {
@@ -103,10 +104,10 @@ class _MyAppState extends State<MyApp> {
           home: DropZone(
             onFileDropped: (path) {
               if (path.endsWith('.nwproj')) {
-                _homeState?.onOpenProject?.call();
+                _homeKey.currentState?.importarDesdeArchivo(path);
               }
             },
-            child: const HomeScreen(),
+            child: HomeScreen(key: _homeKey),
           ),
           builder: (context, child) {
             if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
@@ -137,8 +138,6 @@ class _MyAppState extends State<MyApp> {
     }
     setState(() => _isFullScreen = !_isFullScreen);
   }
-
-  ThemeData _buildTheme() => AppColors.lightTheme;
 }
 
 // Intent classes

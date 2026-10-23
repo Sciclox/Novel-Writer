@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-import '../database/app_database.dart';
+import '../models/chapter_model.dart';
+import '../repositories/chapter_repository.dart';
 
 class EditorViewModel extends ChangeNotifier {
   final int capituloId;
+  final ChapterRepository _repository;
   
-  Map<String, dynamic>? _capitulo;
+  Chapter? _capitulo;
   bool _isLoading = true;
   bool _focusMode = false;
   bool _typewriterMode = false;
@@ -24,9 +26,10 @@ class EditorViewModel extends ChangeNotifier {
   Timer? _autosaveTimer;
   DateTime? _lastSaved;
 
-  EditorViewModel(this.capituloId);
+  EditorViewModel(this.capituloId, {ChapterRepository? repository})
+      : _repository = repository ?? ChapterRepository();
 
-  Map<String, dynamic>? get capitulo => _capitulo;
+  Chapter? get capitulo => _capitulo;
   bool get isLoading => _isLoading;
   bool get focusMode => _focusMode;
   bool get typewriterMode => _typewriterMode;
@@ -62,25 +65,24 @@ class EditorViewModel extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    final db = await AppDatabase.database;
-    final List<Map<String, dynamic>> caps = await db.query(
-      'capitulos',
-      where: 'id = ?',
-      whereArgs: [capituloId],
+    final chapters = await _repository.getChaptersByManuscript(
+      _capitulo?.manuscritoId ?? 0,
     );
-    
-    if (caps.isNotEmpty) {
-      _capitulo = Map<String, dynamic>.from(caps.first);
-      
-      // Load versions
-      _versions = await AppDatabase.getCapituloVersiones(capituloId);
-      
-      // Load goals
-      _sessionGoal = _capitulo!['meta_sesion'] ?? 0;
-      _dailyGoal = _capitulo!['meta_diaria'] ?? 0;
+    Chapter? found;
+    for (final c in chapters) {
+      if (c.id == capituloId) {
+        found = c;
+        break;
+      }
+    }
 
-      // Initialize Quill Controller
-      final contentStr = _capitulo!['contenido'] ?? '';
+    if (found != null) {
+      _capitulo = found;
+      _versions = await _repository.getVersions(capituloId);
+      _sessionGoal = _capitulo!.metaSesion;
+      _dailyGoal = _capitulo!.metaDiaria;
+
+      final contentStr = _capitulo!.contenido;
       quill.Document doc;
       if (contentStr.trim().startsWith('[') && contentStr.trim().endsWith(']')) {
         try {
@@ -91,7 +93,7 @@ class EditorViewModel extends ChangeNotifier {
       } else {
         doc = quill.Document()..insert(0, contentStr);
       }
-      
+
       quillController = quill.QuillController(
         document: doc,
         selection: const TextSelection.collapsed(offset: 0),
@@ -100,8 +102,8 @@ class EditorViewModel extends ChangeNotifier {
       _initialWordsCount = _countWords(quillController!.document.toPlainText());
       _sessionWordCount = 0;
 
-      // Setup Autosave timer
-      _autosaveTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      _autosaveTimer?.cancel();
+      _autosaveTimer = Timer.periodic(const Duration(seconds: 15), (_) {
         autosave();
       });
     }
@@ -129,11 +131,16 @@ class EditorViewModel extends ChangeNotifier {
     final contentStr = jsonEncode(quillController!.document.toDelta().toJson());
     final words = _countWords(quillController!.document.toPlainText());
 
-    await AppDatabase.updateCapitulo(capituloId, {
+    await _repository.updateChapterRaw(capituloId, {
       'contenido': contentStr,
       'palabras': words,
     });
     
+    _capitulo = _capitulo!.copyWith(
+      contenido: contentStr,
+      palabras: words,
+    );
+
     _lastSaved = DateTime.now();
     notifyListeners();
   }
@@ -143,7 +150,7 @@ class EditorViewModel extends ChangeNotifier {
   }
 
   Future<void> _saveGoals() async {
-    await AppDatabase.updateCapitulo(capituloId, {
+    await _repository.updateChapterRaw(capituloId, {
       'meta_sesion': _sessionGoal,
       'meta_diaria': _dailyGoal,
     });
@@ -154,8 +161,8 @@ class EditorViewModel extends ChangeNotifier {
     final contentStr = jsonEncode(quillController!.document.toDelta().toJson());
     final words = _countWords(quillController!.document.toPlainText());
 
-    await AppDatabase.insertCapituloVersion(capituloId, contentStr, palabras: words, motivo: motivo);
-    _versions = await AppDatabase.getCapituloVersiones(capituloId);
+    await _repository.createSnapshot(capituloId, contentStr, palabras: words, motivo: motivo);
+    _versions = await _repository.getVersions(capituloId);
     notifyListeners();
   }
 
@@ -172,9 +179,7 @@ class EditorViewModel extends ChangeNotifier {
       doc = quill.Document()..insert(0, contentStr);
     }
 
-    if (quillController != null) {
-      quillController!.dispose();
-    }
+    quillController?.dispose();
     quillController = quill.QuillController(
       document: doc,
       selection: const TextSelection.collapsed(offset: 0),

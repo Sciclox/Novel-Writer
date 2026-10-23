@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'project_screen.dart';
 import '../database/app_database.dart';
+import '../services/project_bundle_service.dart';
 import '../shared/app_theme.dart';
 import '../shared/app_widgets.dart';
 
@@ -75,6 +76,105 @@ class HomeScreenState extends State<HomeScreen> {
     _cargarProyectos();
   }
 
+  Future<void> _exportarProyectoBundle(Map<String, dynamic> proyecto) async {
+    try {
+      final safeTitle = (proyecto['titulo'] ?? 'proyecto')
+          .toString()
+          .replaceAll(RegExp(r'[^\w\s-]'), '')
+          .trim()
+          .replaceAll(RegExp(r'\s+'), '_');
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Exportar respaldo de proyecto (.nwproj)',
+        fileName: '$safeTitle.nwproj',
+        type: FileType.custom,
+        allowedExtensions: ['nwproj'],
+      );
+      if (path == null) return;
+      await ProjectBundleService.saveBundleToFile(proyecto['id'] as int, path);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Respaldo exportado con éxito en: $path'),
+            backgroundColor: AppColors.accent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al exportar: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _importarProyectoBundle() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Importar proyecto (.nwproj)',
+        type: FileType.custom,
+        allowedExtensions: ['nwproj'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      Uint8List? bytes = result.files.first.bytes;
+      if (bytes == null && result.files.first.path != null) {
+        bytes = await File(result.files.first.path!).readAsBytes();
+      }
+      if (bytes != null && bytes.isNotEmpty) {
+        final newId = await ProjectBundleService.importProjectFromBundle(bytes);
+        await _cargarProyectos();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Proyecto importado con éxito (ID: $newId)'),
+              backgroundColor: AppColors.accent,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al importar proyecto: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> importarDesdeArchivo(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) return;
+      final bytes = await file.readAsBytes();
+      final newId = await ProjectBundleService.importProjectFromBundle(bytes);
+      await _cargarProyectos();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Proyecto importado con éxito (ID: $newId)'),
+            backgroundColor: AppColors.accent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al importar: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -109,6 +209,25 @@ class HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 const Spacer(),
+                OutlinedButton.icon(
+                  onPressed: _importarProyectoBundle,
+                  icon: const Icon(Icons.file_upload_outlined, size: 16),
+                  label: Text(
+                    'IMPORTAR .NWPROJ',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accent,
+                    side: BorderSide(color: AppColors.accent.withValues(alpha: 0.4)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(width: 16),
                 _ViewToggle(
                   isGridView: _isGridView,
                   onToggle: () => setState(() => _isGridView = !_isGridView),
@@ -186,6 +305,7 @@ class HomeScreenState extends State<HomeScreen> {
           onUploadCover: () => _subirPortada(proyectos[index]['id'] as int),
           onRemoveCover: () => _quitarPortada(proyectos[index]['id'] as int),
           onEdit: () => _mostrarDialogoEditarProyecto(proyectos[index]),
+          onExportBundle: () => _exportarProyectoBundle(proyectos[index]),
         ),
       );
     } else {
@@ -212,6 +332,7 @@ class HomeScreenState extends State<HomeScreen> {
           onUploadCover: () => _subirPortada(proyectos[index]['id'] as int),
           onRemoveCover: () => _quitarPortada(proyectos[index]['id'] as int),
           onEdit: () => _mostrarDialogoEditarProyecto(proyectos[index]),
+          onExportBundle: () => _exportarProyectoBundle(proyectos[index]),
         ),
       );
     }
@@ -582,7 +703,10 @@ class _BuildGridItem extends StatefulWidget {
     this.onUploadCover,
     this.onRemoveCover,
     this.onEdit,
+    this.onExportBundle,
   });
+
+  final VoidCallback? onExportBundle;
 
   @override
   State<_BuildGridItem> createState() => _BuildGridItemState();
@@ -897,8 +1021,26 @@ class _BuildGridItemState extends State<_BuildGridItem>
                     if (value == 'uploadCover') widget.onUploadCover?.call();
                     if (value == 'removeCover') widget.onRemoveCover?.call();
                     if (value == 'edit') widget.onEdit?.call();
+                    if (value == 'exportBundle') widget.onExportBundle?.call();
                   },
                   itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'exportBundle',
+                      height: 36,
+                      child: Row(
+                        children: [
+                          Icon(Icons.archive_outlined, size: 16, color: accent),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Exportar .nwproj',
+                            style: GoogleFonts.outfit(
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     PopupMenuItem(
                       value: 'edit',
                       height: 36,
@@ -1212,6 +1354,7 @@ class _BuildListItem extends StatefulWidget {
   final VoidCallback? onUploadCover;
   final VoidCallback? onRemoveCover;
   final VoidCallback? onEdit;
+  final VoidCallback? onExportBundle;
 
   const _BuildListItem({
     required this.proyecto,
@@ -1222,6 +1365,7 @@ class _BuildListItem extends StatefulWidget {
     this.onUploadCover,
     this.onRemoveCover,
     this.onEdit,
+    this.onExportBundle,
   });
 
   @override
@@ -1349,6 +1493,7 @@ class _BuildListItemState extends State<_BuildListItem> {
                 onDuplicate: widget.onDuplicate,
                 onDelete: widget.onDelete,
                 onEdit: widget.onEdit,
+                onExportBundle: widget.onExportBundle,
               ),
             ],
           ),
@@ -1415,6 +1560,7 @@ class _ListActionChip extends StatefulWidget {
   final VoidCallback? onDuplicate;
   final VoidCallback? onDelete;
   final VoidCallback? onEdit;
+  final VoidCallback? onExportBundle;
 
   const _ListActionChip({
     required this.isHovered,
@@ -1424,6 +1570,7 @@ class _ListActionChip extends StatefulWidget {
     this.onDuplicate,
     this.onDelete,
     this.onEdit,
+    this.onExportBundle,
   });
 
   @override
@@ -1468,8 +1615,14 @@ class _ListActionChipState extends State<_ListActionChip> {
                   if (value == 'uploadCover') widget.onUploadCover?.call();
                   if (value == 'removeCover') widget.onRemoveCover?.call();
                   if (value == 'edit') widget.onEdit?.call();
+                  if (value == 'exportBundle') widget.onExportBundle?.call();
                 },
                 itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'exportBundle',
+                    height: 34,
+                    child: _MenuRow(icon: Icons.archive_outlined, text: 'Exportar .nwproj'),
+                  ),
                   PopupMenuItem(
                     value: 'edit',
                     height: 34,
